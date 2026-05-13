@@ -79,7 +79,7 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
             }
             st.dataframe(
                 df.style.format(fmt)
-                  .applymap(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                  .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
                                       "color:red"   if isinstance(v, float) and v <  0 else "",
                             subset=["Gain/Loss (₹)", "Return %"])
                   .set_properties(**{"font-weight": "bold"}, subset=pd.IndexSlice[df.index[-1], :]),

@@ -52,7 +52,7 @@ if items:
     st.dataframe(
         df.style
           .format(fmt)
-          .applymap(lambda v: "color:red"   if isinstance(v, float) and v < 0 else
+          .map(lambda v: "color:red"   if isinstance(v, float) and v < 0 else
                               "color:green" if isinstance(v, float) and v > 0 else "",
                     subset=["% from 52W High", "% from 52W Low"]),
         use_container_width=True,

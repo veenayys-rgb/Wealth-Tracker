@@ -27,7 +27,7 @@ def colour(val) -> str:
 
 def style_gain(df: pd.DataFrame, col: str) -> pd.io.formats.style.Styler:
     """Apply green/red colouring to a gain/loss column."""
-    return df.style.applymap(
+    return df.style.map(
         lambda v: "color: green" if isinstance(v, (int, float)) and v >= 0
                   else "color: red",
         subset=[col]

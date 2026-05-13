@@ -112,7 +112,7 @@ def show_table(owner: str):
     st.dataframe(
         df.style
           .format(fmt)
-          .applymap(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+          .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
                               "color:red"   if isinstance(v, float) and v < 0  else "",
                     subset=["Gain/Loss (₹)"])
           .set_properties(**{"font-weight": "bold"}, subset=pd.IndexSlice[df.index[-1], :]),

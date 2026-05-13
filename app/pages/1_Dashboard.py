@@ -161,7 +161,7 @@ fmt = {
 st.dataframe(
     df.style
       .format(fmt)
-      .applymap(lambda v: "color:green" if isinstance(v, float) and v >= 0 else "color:red",
+      .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else "color:red",
                 subset=["Gain/Loss (₹)", "Return %"])
       .set_properties(**{"font-weight": "bold"}, subset=pd.IndexSlice[df.index[-1], :]),
     use_container_width=True,

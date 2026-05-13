@@ -112,6 +112,11 @@ def fetch_india():
         else:
             print(f"   ❌  {sym:<18} Not found")
 
+    # Deduplicate by symbol — keep last price fetched
+    seen = {}
+    for r in rows:
+        seen[r["symbol"]] = r
+    rows = list(seen.values())
     upsert("equity_india_prices", rows, conflict_col="symbol")
     print(f"   💾  {len(rows)}/{len(symbols)} India prices saved to Supabase")
 

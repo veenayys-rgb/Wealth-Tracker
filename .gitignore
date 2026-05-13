@@ -1,0 +1,9 @@
+# Never commit secrets or config data to GitHub
+.streamlit/secrets.toml
+config/
+*.json
+__pycache__/
+*.pyc
+.DS_Store
+*.xlsx
+*.xls

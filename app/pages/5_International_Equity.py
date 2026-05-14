@@ -1,0 +1,225 @@
+"""International Equity — UAE (ADX) + US. Display + Quick Edit + Add/Edit/Delete."""
+import sys, os, datetime
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import streamlit as st
+import pandas as pd
+from utils.db     import fetch, get_forex
+from utils.config import load, save
+from utils.fmt    import ind_num, plain_num, total_metrics
+
+st.set_page_config(page_title="International Equity | Wealth Tracker", page_icon="🌍", layout="wide")
+st.title("🌍 International Equity")
+
+forex        = get_forex()
+aed          = forex.get("AED_INR", 0)
+usd          = forex.get("USD_INR", 0)
+prices_rows  = fetch("equity_international_prices")
+prices       = {r["symbol"]: float(r["price"]) for r in prices_rows}
+last_fetch   = prices_rows[0]["fetched_at"][:19].replace("T", " ") if prices_rows else "—"
+st.caption(f"Last fetched: {last_fetch} UTC  |  AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
+
+holdings = load("equity_international.json")
+
+REGIONS    = ["UAE", "US", "UK", "Other"]
+CURRENCIES = ["AED", "USD", "GBP", "EUR", "Other"]
+EXCHANGES  = ["ADX", "DFM", "NYSE", "NASDAQ", "LSE", "Other"]
+SOURCES    = ["Market", "IPO", "DAD"]
+
+
+def fx_rate(curr):
+    return aed if curr == "AED" else usd
+
+
+# ── Display table ──────────────────────────────────────────────────────────────
+if holdings:
+    total_inv = total_cv = 0.0
+    rows = []
+    for h in holdings:
+        sym     = h["symbol"].upper()
+        qty     = float(h.get("qty", 0))
+        cost    = float(h.get("avg_cost", 0))
+        curr    = h.get("currency", "USD")
+        rate    = fx_rate(curr)
+        price   = prices.get(sym, 0)
+        inv_f   = qty * cost
+        cv_f    = qty * price if price > 0 else inv_f
+        inv_inr = inv_f * rate
+        cv_inr  = cv_f  * rate
+        gl_inr  = cv_inr - inv_inr
+        ret     = (gl_inr / inv_inr * 100) if inv_inr > 0 else 0.0
+        total_inv += inv_inr
+        total_cv  += cv_inr
+        # column order: name + numeric first, metadata at end
+        rows.append({
+            "Company Name":        h.get("name", "") or "—",
+            "Qty":                 qty,
+            "Avg Cost (FCY)":      cost,
+            "Invested (FCY)":      inv_f,
+            "Current Price (FCY)": price if price > 0 else None,
+            "Current Value (FCY)": cv_f,
+            "Forex Rate":          rate,
+            "Invested (INR)":      inv_inr,
+            "Current Value (INR)": cv_inr,
+            "Gain/Loss (INR)":     gl_inr,
+            "Return %":            ret,
+            "% of Portfolio":      0.0,
+            "Symbol":              sym,
+            "ISIN":                h.get("isin", "") or "—",
+            "Region":              h.get("region", "") or "—",
+            "Exchange":            h.get("exchange", "") or "—",
+            "Currency":            curr,
+            "Source":              h.get("source", "") or "—",
+            "Buy Date":            h.get("buy_date", "") or "—",
+        })
+
+    total_cv_safe = total_cv if total_cv > 0 else 1.0
+    for r in rows:
+        r["% of Portfolio"] = r["Current Value (INR)"] / total_cv_safe * 100
+
+    total_gl  = total_cv - total_inv
+    total_ret = (total_gl / total_inv * 100) if total_inv > 0 else 0.0
+
+    df  = pd.DataFrame(rows)
+    fmt = {
+        "Qty":                 lambda v: f"{v:,.0f}" if v is not None else "—",
+        "Avg Cost (FCY)":      lambda v: plain_num(v, decimals=4) if v is not None else "—",
+        "Invested (FCY)":      lambda v: plain_num(v) if v is not None else "—",
+        "Current Price (FCY)": lambda v: plain_num(v, decimals=4) if v is not None else "—",
+        "Current Value (FCY)": lambda v: plain_num(v) if v is not None else "—",
+        "Forex Rate":          lambda v: f"{v:.4f}" if v is not None else "—",
+        "Invested (INR)":      lambda v: ind_num(v),
+        "Current Value (INR)": lambda v: ind_num(v),
+        "Gain/Loss (INR)":     lambda v: ind_num(v),
+        "Return %":            lambda v: f"{v:+.2f}%" if v is not None else "—",
+        "% of Portfolio":      lambda v: f"{v:.2f}%" if v is not None else "—",
+    }
+    st.dataframe(
+        df.style
+          .format(fmt)
+          .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                         "color:red"   if isinstance(v, float) and v <  0 else "",
+               subset=["Gain/Loss (INR)", "Return %"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+    total_metrics(total_inv, total_cv)
+
+else:
+    st.info("No international holdings yet. Add below.")
+
+st.divider()
+
+# ── Quick Edit — Qty & Avg Cost ────────────────────────────────────────────────
+if holdings:
+    with st.expander("✏️ Quick Edit — Qty & Avg Cost"):
+        qe_rows = [{
+            "Company":        h.get("name") or h.get("symbol", "—"),
+            "Symbol":         h["symbol"].upper(),
+            "Currency":       h.get("currency", "—"),
+            "Qty":            float(h.get("qty", 0)),
+            "Avg Cost (FCY)": float(h.get("avg_cost", 0)),
+        } for h in holdings]
+        qe_df  = pd.DataFrame(qe_rows)
+        edited = st.data_editor(
+            qe_df,
+            column_config={
+                "Company":        st.column_config.TextColumn(disabled=True, width="medium"),
+                "Symbol":         st.column_config.TextColumn(disabled=True),
+                "Currency":       st.column_config.TextColumn(disabled=True),
+                "Qty":            st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                "Avg Cost (FCY)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="qe_intl",
+        )
+        if st.button("💾 Save Changes", key="qsave_intl"):
+            for i in range(len(holdings)):
+                holdings[i]["qty"]      = float(edited.iloc[i]["Qty"])
+                holdings[i]["avg_cost"] = float(edited.iloc[i]["Avg Cost (FCY)"])
+            save("equity_international.json", holdings)
+            st.success("✅ Changes saved.")
+            st.rerun()
+
+# ── Add ────────────────────────────────────────────────────────────────────────
+with st.expander("➕ Add New Holding"):
+    with st.form("add_intl"):
+        c1, c2, c3 = st.columns(3)
+        name   = c1.text_input("Company Name")
+        symbol = c2.text_input("Symbol")
+        isin   = c3.text_input("ISIN")
+        c4, c5, c6 = st.columns(3)
+        region   = c4.selectbox("Region",   REGIONS)
+        exchange = c5.selectbox("Exchange", EXCHANGES)
+        currency = c6.selectbox("Currency", CURRENCIES)
+        c7, c8, c9 = st.columns(3)
+        source   = c7.selectbox("Source", SOURCES)
+        buy_date = c8.date_input("Buy Date", value=datetime.date.today())
+        qty      = c9.number_input("Quantity",       min_value=0.0, step=1.0,  format="%.4f")
+        avg_cost = st.number_input("Avg Cost (FCY)", min_value=0.0, step=0.01, format="%.4f")
+        if st.form_submit_button("Add Holding"):
+            if not symbol.strip():
+                st.error("Symbol is required.")
+            else:
+                holdings.append({
+                    "name": name.strip(), "symbol": symbol.strip().upper(),
+                    "isin": isin.strip().upper(), "region": region,
+                    "exchange": exchange, "currency": currency,
+                    "source": source, "buy_date": str(buy_date),
+                    "qty": qty, "avg_cost": avg_cost,
+                })
+                save("equity_international.json", holdings)
+                st.success(f"✅ {symbol.upper()} added.")
+                st.rerun()
+
+# ── Edit ───────────────────────────────────────────────────────────────────────
+if holdings:
+    with st.expander("✏️ Edit Holding"):
+        options = [f"{h['symbol']} — {h.get('name','')} ({h.get('region','')})" for h in holdings]
+        sel     = st.selectbox("Select holding", options, key="edit_intl_sel")
+        idx     = options.index(sel)
+        h       = holdings[idx]
+        with st.form("edit_intl"):
+            c1, c2, c3 = st.columns(3)
+            name   = c1.text_input("Company Name", value=h.get("name",""))
+            symbol = c2.text_input("Symbol",       value=h.get("symbol",""))
+            isin   = c3.text_input("ISIN",         value=h.get("isin",""))
+            c4, c5, c6 = st.columns(3)
+            region   = c4.selectbox("Region",   REGIONS,
+                                    index=REGIONS.index(h.get("region","UAE")) if h.get("region") in REGIONS else 0)
+            exchange = c5.selectbox("Exchange", EXCHANGES,
+                                    index=EXCHANGES.index(h.get("exchange","ADX")) if h.get("exchange") in EXCHANGES else 0)
+            currency = c6.selectbox("Currency", CURRENCIES,
+                                    index=CURRENCIES.index(h.get("currency","AED")) if h.get("currency") in CURRENCIES else 0)
+            c7, c8, c9 = st.columns(3)
+            source   = c7.selectbox("Source", SOURCES,
+                                    index=SOURCES.index(h.get("source","Market")) if h.get("source") in SOURCES else 0)
+            try:    bd = datetime.date.fromisoformat(h.get("buy_date","2024-01-01"))
+            except: bd = datetime.date.today()
+            buy_date = c8.date_input("Buy Date", value=bd, key="edit_intl_bd")
+            qty      = c9.number_input("Quantity",       value=float(h.get("qty",0)),      min_value=0.0, step=1.0,  format="%.4f")
+            avg_cost = st.number_input("Avg Cost (FCY)", value=float(h.get("avg_cost",0)), min_value=0.0, step=0.01, format="%.4f")
+            if st.form_submit_button("Save Changes"):
+                holdings[idx] = {
+                    "name": name.strip(), "symbol": symbol.strip().upper(),
+                    "isin": isin.strip().upper(), "region": region,
+                    "exchange": exchange, "currency": currency,
+                    "source": source, "buy_date": str(buy_date),
+                    "qty": qty, "avg_cost": avg_cost,
+                }
+                save("equity_international.json", holdings)
+                st.success("✅ Changes saved.")
+                st.rerun()
+
+    # ── Delete ─────────────────────────────────────────────────────────────────
+    with st.expander("🗑️ Delete Holding"):
+        opts_d = [f"{h['symbol']} — {h.get('name','')} ({h.get('region','')})" for h in holdings]
+        to_del = st.multiselect("Select holding(s) to remove", opts_d, key="del_intl")
+        if to_del:
+            st.warning(f"This will permanently remove {len(to_del)} holding(s).")
+            if st.button("Confirm Delete", key="del_intl_btn"):
+                holdings = [h for i, h in enumerate(holdings) if opts_d[i] not in to_del]
+                save("equity_international.json", holdings)
+                st.success(f"✅ {len(to_del)} holding(s) removed.")
+                st.rerun()

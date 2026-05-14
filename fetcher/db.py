@@ -21,3 +21,12 @@ def upsert(table: str, rows: list[dict], conflict_col: str = "symbol"):
     if not rows:
         return
     get_client().table(table).upsert(rows, on_conflict=conflict_col).execute()
+
+
+def fetch_cfg(table: str, owner: str = None) -> list[dict]:
+    """Read holdings from a cfg_* table. Optionally filter by owner."""
+    q = get_client().table(table).select("*")
+    if owner:
+        q = q.eq("owner", owner)
+    rows = q.execute().data
+    return [{k: v for k, v in r.items() if k != "id"} for r in rows]

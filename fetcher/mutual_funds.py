@@ -2,36 +2,19 @@
 Mutual Fund + ETF NAV fetcher — AMFI India
 Fetches NAVAll.txt once and looks up all ISINs in one pass.
 """
-import json, datetime, os, urllib.request, ssl
-from db import upsert
+import datetime, urllib.request, ssl
+from db import upsert, fetch_cfg
 
 AMFI_URL = "https://www.amfiindia.com/spages/NAVAll.txt"
-ICLOUD   = os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs/WealthTracker")
-CONFIG   = os.path.join(ICLOUD, "config")
-
-MF_FILES = [
-    "mutual_funds_vinay.json",
-    "mutual_funds_harsh.json",
-    "mutual_funds_anusha.json",
-]
-
-
-def load_json(filename: str) -> list:
-    path = os.path.join(CONFIG, filename)
-    if not os.path.exists(path):
-        return []
-    with open(path) as f:
-        return json.load(f)
 
 
 def fetch_amfi_navs():
-    # Collect all unique ISINs across all three MF files
+    # Collect all unique ISINs from Supabase cfg_mutual_funds
     all_isins: dict[str, str] = {}   # isin → fund_name
-    for fname in MF_FILES:
-        for h in load_json(fname):
-            isin = str(h.get("isin", "")).strip().upper()
-            if isin:
-                all_isins[isin] = h.get("fund_name", "")
+    for h in fetch_cfg("cfg_mutual_funds"):
+        isin = str(h.get("isin", "")).strip().upper()
+        if isin:
+            all_isins[isin] = h.get("fund_name", "")
 
     if not all_isins:
         print("   ℹ️   No MF ISINs found — skipping")

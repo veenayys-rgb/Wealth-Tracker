@@ -2,26 +2,15 @@
 Equity price fetcher — India (NSE/BSE) + International (ADX/US)
 Uses batch yf.download() for speed; individual fallback for failures.
 """
-import json, time, datetime, ssl, os
+import time, datetime, ssl, os
 import yfinance as yf
-from db import upsert
+from db import upsert, fetch_cfg
 
 ssl._create_default_https_context = ssl._create_unverified_context
 os.environ["YFINANCE_CACHE_DIR"] = ""
 
-ICLOUD      = os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs/WealthTracker")
-CONFIG      = os.path.join(ICLOUD, "config")
-YF_DELAY    = 0.5
-
-SUFFIX = {"NSE": ".NS", "BSE": ".BO", "ADX": ".AD", "US": ""}
-
-
-def load_json(filename: str) -> list:
-    path = os.path.join(CONFIG, filename)
-    if not os.path.exists(path):
-        return []
-    with open(path) as f:
-        return json.load(f)
+YF_DELAY = 0.5
+SUFFIX   = {"NSE": ".NS", "BSE": ".BO", "ADX": ".AD", "US": ""}
 
 
 def batch_download(tickers: list[str], period: str = "1y") -> dict:
@@ -79,7 +68,7 @@ def individual_fetch(sym: str, suffixes: list[str]) -> dict | None:
 # ── India Equity ──────────────────────────────────────────────────────────────
 
 def fetch_india():
-    holdings = load_json("equity_india.json")
+    holdings = fetch_cfg("cfg_equity_india")
     if not holdings:
         print("   ℹ️   equity_india.json empty — skipping")
         return
@@ -124,7 +113,7 @@ def fetch_india():
 # ── International Equity ──────────────────────────────────────────────────────
 
 def fetch_international():
-    holdings = load_json("equity_international.json")
+    holdings = fetch_cfg("cfg_equity_international")
     if not holdings:
         print("   ℹ️   equity_international.json empty — skipping")
         return
@@ -176,7 +165,7 @@ def fetch_international():
 # ── Watchlist ─────────────────────────────────────────────────────────────────
 
 def fetch_watchlist():
-    items = load_json("watchlist.json")
+    items = fetch_cfg("cfg_watchlist")
     if not items:
         print("   ℹ️   watchlist.json empty — skipping")
         return

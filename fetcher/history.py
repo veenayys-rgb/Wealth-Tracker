@@ -3,28 +3,12 @@ Portfolio History recorder.
 Runs after prices are fetched. Records a daily snapshot only when
 the NSE market is closed (weekends, holidays, or after 3:30 PM IST).
 """
-import json, datetime, os
-from db import get_client, upsert
+import datetime
+from db import get_client, upsert, fetch_cfg
 
-ICLOUD   = os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs/WealthTracker")
-CONFIG   = os.path.join(ICLOUD, "config")
 IST      = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 CLOSE_HR = 15
 CLOSE_MN = 30
-
-MF_FILES = {
-    "vinay":  "mutual_funds_vinay.json",
-    "harsh":  "mutual_funds_harsh.json",
-    "anusha": "mutual_funds_anusha.json",
-}
-
-
-def load_json(filename: str) -> list:
-    path = os.path.join(CONFIG, filename)
-    if not os.path.exists(path):
-        return []
-    with open(path) as f:
-        return json.load(f)
 
 
 def market_is_closed() -> bool:
@@ -49,7 +33,7 @@ def get_latest_prices() -> dict:
 def compute_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
     eq_invested = eq_cv = 0.0
 
-    for h in load_json("equity_india.json"):
+    for h in fetch_cfg("cfg_equity_india"):
         sym     = h["symbol"].upper()
         price   = eq_prices.get(sym, 0)
         qty     = float(h.get("qty", 0))
@@ -59,16 +43,16 @@ def compute_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
         eq_cv       += qty * price if price > 0 else inv
 
     mf_data = {}
-    for owner, fname in MF_FILES.items():
+    for owner in ["Vinay", "Harsh", "Anusha"]:
         inv = cv = 0.0
-        for h in load_json(fname):
+        for h in fetch_cfg("cfg_mutual_funds", owner=owner):
             isin  = h.get("isin", "").upper()
             units = float(h.get("units", 0))
             anav  = float(h.get("avg_nav", 0))
             nav   = mf_navs.get(isin, 0)
             inv  += units * anav
             cv   += units * nav if nav > 0 else units * anav
-        mf_data[owner] = {"invested": round(inv, 2), "cv": round(cv, 2)}
+        mf_data[owner.lower()] = {"invested": round(inv, 2), "cv": round(cv, 2)}
 
     total_inv = eq_invested + sum(v["invested"] for v in mf_data.values())
     total_cv  = eq_cv       + sum(v["cv"]       for v in mf_data.values())

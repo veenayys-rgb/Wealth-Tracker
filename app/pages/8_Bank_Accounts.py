@@ -51,15 +51,12 @@ with tab_india:
                         "IFSC":                 _blank(b.get("ifsc")),
                         "Owner":                _blank(b.get("owner")),
                         "2nd Holder":           _blank(b.get("second_holder")),
-                        "Balance (₹)":          bal,
+                        "Balance (₹)":          f"₹ {bal:,.2f}",
                     })
                 df = pd.DataFrame(rows)
                 edited = st.data_editor(
                     df,
-                    column_config={
-                        "☑":          st.column_config.CheckboxColumn("☑", width="small"),
-                        "Balance (₹)": st.column_config.NumberColumn(format="₹ {:,.2f}"),
-                    },
+                    column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
                     disabled=[c for c in df.columns if c != "☑"],
                     hide_index=True, use_container_width=True,
                     key=f"de_india_{oi}",
@@ -182,17 +179,13 @@ with tab_uae:
                         "Account Type":  _blank(b.get("account_type")),
                         "Account No.":   _blank(b.get("account_no")),
                         "Owner":         _blank(b.get("owner")),
-                        "Balance (AED)": bal_aed,
-                        "Equiv. INR":    equiv,
+                        "Balance (AED)": f"{bal_aed:,.2f}",
+                        "Equiv. INR":    f"₹ {equiv:,.2f}",
                     })
                 df = pd.DataFrame(rows)
                 edited = st.data_editor(
                     df,
-                    column_config={
-                        "☑":             st.column_config.CheckboxColumn("☑", width="small"),
-                        "Balance (AED)": st.column_config.NumberColumn(format="{:,.2f}"),
-                        "Equiv. INR":    st.column_config.NumberColumn(format="₹ {:,.2f}"),
-                    },
+                    column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
                     disabled=[c for c in df.columns if c != "☑"],
                     hide_index=True, use_container_width=True,
                     key=f"de_uae_{oi}",

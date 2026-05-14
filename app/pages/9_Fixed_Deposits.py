@@ -54,26 +54,19 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     "FD No":              _blank(fd.get("fd_no")),
                     "Owner":              _blank(fd.get("owner")),
                     "Currency":           _blank(curr),
-                    "Amount":             amt,
-                    "Equiv INR":          equiv,
-                    "Rate % p.a.":        float(fd.get("rate_pa", 0)),
+                    "Amount":             f"{amt:,.2f}",
+                    "Equiv INR":          f"₹ {equiv:,.2f}",
+                    "Rate % p.a.":        f"{float(fd.get('rate_pa', 0)):.2f}%",
                     "Start Date":         _blank(fd.get("start_date")),
                     "Maturity Date":      _blank(fd.get("maturity_date")),
-                    "Maturity Amount":    mat_amt,
-                    "Maturity INR":       mat_inr,
+                    "Maturity Amount":    f"{mat_amt:,.2f}",
+                    "Maturity INR":       f"₹ {mat_inr:,.2f}",
                 })
 
             df = pd.DataFrame(rows)
             edited = st.data_editor(
                 df,
-                column_config={
-                    "☑":              st.column_config.CheckboxColumn("☑", width="small"),
-                    "Amount":         st.column_config.NumberColumn(format="{:,.2f}"),
-                    "Equiv INR":      st.column_config.NumberColumn(format="₹ {:,.2f}"),
-                    "Rate % p.a.":    st.column_config.NumberColumn(format="%.2f%%"),
-                    "Maturity Amount": st.column_config.NumberColumn(format="{:,.2f}"),
-                    "Maturity INR":   st.column_config.NumberColumn(format="₹ {:,.2f}"),
-                },
+                column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
                 disabled=[c for c in df.columns if c != "☑"],
                 hide_index=True, use_container_width=True,
                 key=f"de_fd_{oi}",

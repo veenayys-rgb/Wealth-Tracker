@@ -64,40 +64,31 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
             for p in subset:
                 prem_amt = float(p.get("premium_amount", 0))
                 total_p  = _calc_total_premium(prem_amt, p.get("years_paid", ""))
+                ins_val  = float(p.get("insured_value", 0))
+                sur_val  = float(p.get("surrender_value", 0))
+                tot_paid = total_p if total_p is not None else float(p.get("premium_paid_ytd", 0))
                 rows.append({
-                    "☑":                   False,
-                    "Company":             _blank(p.get("company_name")),
-                    "Type":                _blank(p.get("insurance_type")),
-                    "Policy No":           _blank(p.get("policy_no")),
-                    "Owner":               _blank(p.get("owner")),
-                    "Beneficiary":         _blank(p.get("beneficiary")),
-                    "Currency":            _blank(p.get("currency")),
-                    "Insured Value":       float(p.get("insured_value", 0)),
-                    "Surrender Value":     float(p.get("surrender_value", 0)),
-                    "Premium Amount":      prem_amt,
-                    "Payment Term":        _blank(p.get("premium_payment_term")),
-                    "Years Paid":          _blank(p.get("years_paid")),
-                    "Total Premium Paid":  total_p if total_p is not None else float(p.get("premium_paid_ytd", 0)),
-                    "Next Due":            _due_label(p.get("next_premium_due", "")),
-                    "Maturity Date":       _blank(p.get("maturity_date")),
+                    "☑":                  False,
+                    "Company":            _blank(p.get("company_name")),
+                    "Type":               _blank(p.get("insurance_type")),
+                    "Policy No":          _blank(p.get("policy_no")),
+                    "Owner":              _blank(p.get("owner")),
+                    "Beneficiary":        _blank(p.get("beneficiary")),
+                    "Currency":           _blank(p.get("currency")),
+                    "Insured Value":      f"{ins_val:,.2f}",
+                    "Surrender Value":    f"{sur_val:,.2f}",
+                    "Premium Amount":     f"{prem_amt:,.2f}",
+                    "Payment Term":       _blank(p.get("premium_payment_term")),
+                    "Years Paid":         _blank(p.get("years_paid")),
+                    "Total Premium Paid": f"{tot_paid:,.2f}",
+                    "Next Due":           _due_label(p.get("next_premium_due", "")),
+                    "Maturity Date":      _blank(p.get("maturity_date")),
                 })
 
             df = pd.DataFrame(rows)
-
-            def highlight_due(row):
-                if isinstance(row["Next Due"], str) and "d)" in row["Next Due"]:
-                    return ["background-color: #fff3cd"] * len(row)
-                return [""] * len(row)
-
             edited = st.data_editor(
                 df,
-                column_config={
-                    "☑":                  st.column_config.CheckboxColumn("☑", width="small"),
-                    "Insured Value":      st.column_config.NumberColumn(format="{:,.2f}"),
-                    "Surrender Value":    st.column_config.NumberColumn(format="{:,.2f}"),
-                    "Premium Amount":     st.column_config.NumberColumn(format="{:,.2f}"),
-                    "Total Premium Paid": st.column_config.NumberColumn(format="{:,.2f}"),
-                },
+                column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
                 disabled=[c for c in df.columns if c != "☑"],
                 hide_index=True, use_container_width=True,
                 key=f"de_ins_{oi}",

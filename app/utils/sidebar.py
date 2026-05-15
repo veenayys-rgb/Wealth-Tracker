@@ -96,6 +96,7 @@ def render_sidebar():
 
                     # Watchlist
                     holdings_wl = load("watchlist.json")
+                    wl_errors = []
                     if holdings_wl:
                         by_region: dict = {}
                         for item in holdings_wl:
@@ -123,16 +124,22 @@ def render_sidebar():
                                                 "low_52w":       round(float(lows.min()), 4),
                                                 "fetched_at":    datetime.datetime.utcnow().isoformat(),
                                             })
-                                    except Exception:
-                                        pass
-                            except Exception:
-                                pass
+                                        else:
+                                            wl_errors.append(f"{sym}: no data returned (ticker={t})")
+                                    except Exception as e:
+                                        wl_errors.append(f"{sym}: {e}")
+                            except Exception as e:
+                                wl_errors.append(f"Region {region} download failed: {e}")
                         if wl_rows:
                             service_upsert("watchlist_prices", wl_rows, conflict_col="symbol")
                             _updated += len(wl_rows)
+                    st.session_state["_wl_errors"] = wl_errors
 
                     st.success(f"✅ Prices updated ({_updated} securities).")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Refresh failed: {e}")
+        if st.session_state.get("_wl_errors"):
+            for err in st.session_state["_wl_errors"]:
+                st.warning(f"⚠️ WL: {err}")
         st.markdown("---")

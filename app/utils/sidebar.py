@@ -131,7 +131,8 @@ def render_sidebar():
                             service_upsert("watchlist_prices", wl_rows, conflict_col="symbol")
                             _updated += len(wl_rows)
 
-                    st.success(f"✅ {_updated} prices updated.")
+                    st.success(f"✅ Prices updated ({_updated} securities).")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Refresh failed: {e}")
         st.markdown("---")

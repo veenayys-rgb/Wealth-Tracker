@@ -75,6 +75,25 @@ with tab_india:
                         st.rerun()
                     else:
                         st.warning("Select at least one row to delete.")
+
+                with st.expander("✏️ Quick Edit — Balance"):
+                    qe_rows = [{"Bank": b.get("bank_name",""), "Account Type": b.get("account_type",""),
+                                "Balance (₹)": float(b.get("balance", 0))} for b in subset]
+                    qe_ed = st.data_editor(
+                        pd.DataFrame(qe_rows),
+                        column_config={
+                            "Bank":         st.column_config.TextColumn(disabled=True),
+                            "Account Type": st.column_config.TextColumn(disabled=True),
+                            "Balance (₹)":  st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                        },
+                        hide_index=True, use_container_width=True, key=f"qe_india_{oi}",
+                    )
+                    if st.button("💾 Save Balances", key=f"qsave_india_{oi}"):
+                        for j, (fi, _) in enumerate(idxmap):
+                            india[fi]["balance"] = float(qe_ed.iloc[j]["Balance (₹)"])
+                        save("bank_india.json", india)
+                        st.success("✅ Balances saved.")
+                        st.rerun()
             else:
                 st.info(f"No India accounts for {owner_filter or 'any owner'} yet.")
 
@@ -204,6 +223,25 @@ with tab_uae:
                         st.rerun()
                     else:
                         st.warning("Select at least one row to delete.")
+
+                with st.expander("✏️ Quick Edit — Balance"):
+                    qe_rows = [{"Bank": b.get("bank_name",""), "Account Type": b.get("account_type",""),
+                                "Balance (AED)": float(b.get("balance_aed", 0))} for b in subset]
+                    qe_ed = st.data_editor(
+                        pd.DataFrame(qe_rows),
+                        column_config={
+                            "Bank":           st.column_config.TextColumn(disabled=True),
+                            "Account Type":   st.column_config.TextColumn(disabled=True),
+                            "Balance (AED)":  st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                        },
+                        hide_index=True, use_container_width=True, key=f"qe_uae_{oi}",
+                    )
+                    if st.button("💾 Save Balances", key=f"qsave_uae_{oi}"):
+                        for j, (fi, _) in enumerate(idxmap):
+                            uae[fi]["balance_aed"] = float(qe_ed.iloc[j]["Balance (AED)"])
+                        save("bank_uae.json", uae)
+                        st.success("✅ Balances saved.")
+                        st.rerun()
             else:
                 st.info(f"No UAE accounts for {owner_filter or 'any owner'} yet.")
 

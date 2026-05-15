@@ -85,6 +85,31 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     st.rerun()
                 else:
                     st.warning("Select at least one row to delete.")
+
+            with st.expander("✏️ Quick Edit"):
+                qe_rows = [{"Bank": fd.get("bank",""), "FD No": fd.get("fd_no",""),
+                            "Amount": float(fd.get("amount", 0)),
+                            "Rate % p.a.": float(fd.get("rate_pa", 0)),
+                            "Maturity Amount": float(fd.get("maturity_amount", 0))} for fd in subset]
+                qe_ed = st.data_editor(
+                    pd.DataFrame(qe_rows),
+                    column_config={
+                        "Bank":            st.column_config.TextColumn(disabled=True),
+                        "FD No":           st.column_config.TextColumn(disabled=True),
+                        "Amount":          st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                        "Rate % p.a.":     st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                        "Maturity Amount": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                    },
+                    hide_index=True, use_container_width=True, key=f"qe_fd_{oi}",
+                )
+                if st.button("💾 Save Changes", key=f"qsave_fd_{oi}"):
+                    for j, (fi, _) in enumerate(idxmap):
+                        fds[fi]["amount"]          = float(qe_ed.iloc[j]["Amount"])
+                        fds[fi]["rate_pa"]         = float(qe_ed.iloc[j]["Rate % p.a."])
+                        fds[fi]["maturity_amount"] = float(qe_ed.iloc[j]["Maturity Amount"])
+                    save("fixed_deposits.json", fds)
+                    st.success("✅ Changes saved.")
+                    st.rerun()
         else:
             st.info(f"No fixed deposits for {owner_filter or 'any owner'} yet.")
 

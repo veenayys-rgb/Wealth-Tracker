@@ -106,6 +106,35 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     st.rerun()
                 else:
                     st.warning("Select at least one row to delete.")
+
+            with st.expander("✏️ Quick Edit"):
+                qe_rows = [{"Company": p.get("company_name",""), "Policy No": p.get("policy_no",""),
+                            "Surrender Value": float(p.get("surrender_value", 0)),
+                            "Years Paid": str(p.get("years_paid", "")),
+                            "Next Premium Due": str(p.get("next_premium_due", ""))} for p in subset]
+                qe_ed = st.data_editor(
+                    pd.DataFrame(qe_rows),
+                    column_config={
+                        "Company":         st.column_config.TextColumn(disabled=True),
+                        "Policy No":       st.column_config.TextColumn(disabled=True),
+                        "Surrender Value": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                        "Years Paid":      st.column_config.TextColumn(),
+                        "Next Premium Due": st.column_config.TextColumn(),
+                    },
+                    hide_index=True, use_container_width=True, key=f"qe_ins_{oi}",
+                )
+                if st.button("💾 Save Changes", key=f"qsave_ins_{oi}"):
+                    for j, (fi, _) in enumerate(idxmap):
+                        policies[fi]["surrender_value"]  = float(qe_ed.iloc[j]["Surrender Value"])
+                        policies[fi]["years_paid"]       = str(qe_ed.iloc[j]["Years Paid"])
+                        policies[fi]["next_premium_due"] = str(qe_ed.iloc[j]["Next Premium Due"])
+                        calc = _calc_total_premium(float(policies[fi].get("premium_amount", 0)),
+                                                   policies[fi]["years_paid"])
+                        if calc is not None:
+                            policies[fi]["premium_paid_ytd"] = calc
+                    save("insurance.json", policies)
+                    st.success("✅ Changes saved.")
+                    st.rerun()
         else:
             st.info(f"No insurance policies for {owner_filter or 'any owner'} yet.")
 

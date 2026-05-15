@@ -98,18 +98,24 @@ with tab_all:
     history_table(final, money_cols + ["Total Invested", "Total CV"])
 
 
-# ── Vinay MF ──────────────────────────────────────────────────────────────────
+# ── Vinay (Equity + MF) ───────────────────────────────────────────────────────
 with tab_vinay:
-    view = df[["date", "mf_inv_vinay", "mf_cv_vinay"]].copy()
-    view["gain_loss"] = view["mf_cv_vinay"] - view["mf_inv_vinay"]
-    chart_and_table(view, "mf_inv_vinay", "mf_cv_vinay")
+    view = df[["date", "shares_invested", "shares_cv", "mf_inv_vinay", "mf_cv_vinay"]].copy()
+    view["vinay_invested"] = view["shares_invested"] + view["mf_inv_vinay"]
+    view["vinay_cv"]       = view["shares_cv"]       + view["mf_cv_vinay"]
+    view["gain_loss"]      = view["vinay_cv"] - view["vinay_invested"]
+    chart_and_table(view, "vinay_invested", "vinay_cv")
     st.divider()
     disp = view.rename(columns={
-        "mf_inv_vinay": "MF Invested",
-        "mf_cv_vinay":  "MF Current Value",
-        "gain_loss":    "Gain/Loss",
+        "shares_invested": "Equity Invested",
+        "shares_cv":       "Equity CV",
+        "mf_inv_vinay":    "MF Invested",
+        "mf_cv_vinay":     "MF CV",
+        "vinay_invested":  "Total Invested",
+        "vinay_cv":        "Total CV",
+        "gain_loss":       "Gain/Loss",
     })
-    history_table(disp, ["MF Invested", "MF Current Value", "Gain/Loss"])
+    history_table(disp, ["Equity Invested", "Equity CV", "MF Invested", "MF CV", "Total Invested", "Total CV", "Gain/Loss"])
 
 
 # ── Harsh MF ──────────────────────────────────────────────────────────────────

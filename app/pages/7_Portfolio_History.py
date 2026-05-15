@@ -23,7 +23,7 @@ df["date"] = pd.to_datetime(df["date"])
 df = df.sort_values("date").reset_index(drop=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_all, tab_vinay, tab_harsh, tab_anusha = st.tabs(["🏠 All", "👤 Vinay", "👤 Harsh", "👤 Anusha"])
+tab_vinay, tab_harsh, tab_anusha, tab_all = st.tabs(["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All"])
 
 
 def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):

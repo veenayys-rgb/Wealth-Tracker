@@ -132,7 +132,10 @@ if holdings:
                                        "fetched_at": datetime.datetime.utcnow().isoformat()})
             save("equity_india.json", holdings)
             if price_rows:
-                service_upsert("equity_india_prices", price_rows, conflict_col="symbol")
+                try:
+                    service_upsert("equity_india_prices", price_rows, conflict_col="symbol")
+                except Exception:
+                    pass
             st.success("✅ Changes saved.")
             st.rerun()
 

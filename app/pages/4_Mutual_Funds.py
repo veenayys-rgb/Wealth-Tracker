@@ -146,7 +146,10 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
                                              "fetched_at": datetime.datetime.utcnow().isoformat()})
                     save(fname, holdings)
                     if nav_rows:
-                        service_upsert("mf_navs", nav_rows, conflict_col="isin")
+                        try:
+                            service_upsert("mf_navs", nav_rows, conflict_col="isin")
+                        except Exception:
+                            pass
                     st.success("✅ Changes saved.")
                     st.rerun()
 

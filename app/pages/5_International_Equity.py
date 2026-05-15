@@ -157,10 +157,11 @@ if holdings:
                                        "fetched_at": datetime.datetime.utcnow().isoformat()})
             save("equity_international.json", holdings)
             if price_rows:
+                deduped = list({r["symbol"]: r for r in price_rows}.values())
                 try:
-                    service_upsert("equity_international_prices", price_rows, conflict_col="symbol")
-                except Exception:
-                    pass
+                    service_upsert("equity_international_prices", deduped, conflict_col="symbol")
+                except Exception as e:
+                    st.warning(f"Holdings saved but price update failed: {e}")
             st.success("✅ Changes saved.")
             st.rerun()
 

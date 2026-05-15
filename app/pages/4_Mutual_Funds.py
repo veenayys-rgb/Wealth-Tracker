@@ -146,10 +146,11 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
                                              "fetched_at": datetime.datetime.utcnow().isoformat()})
                     save(fname, holdings)
                     if nav_rows:
+                        deduped = list({r["isin"]: r for r in nav_rows}.values())
                         try:
-                            service_upsert("mf_navs", nav_rows, conflict_col="isin")
-                        except Exception:
-                            pass
+                            service_upsert("mf_navs", deduped, conflict_col="isin")
+                        except Exception as e:
+                            st.warning(f"Holdings saved but NAV update failed: {e}")
                     st.success("✅ Changes saved.")
                     st.rerun()
 

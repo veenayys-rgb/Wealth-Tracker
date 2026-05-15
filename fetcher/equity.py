@@ -10,7 +10,9 @@ ssl._create_default_https_context = ssl._create_unverified_context
 os.environ["YFINANCE_CACHE_DIR"] = ""
 
 YF_DELAY = 0.5
-SUFFIX   = {"NSE": ".NS", "BSE": ".BO", "ADX": ".AD", "US": ""}
+SUFFIX   = {"NSE": ".NS", "BSE": ".BO", "ADX": ".AD", "DFM": ".DFM",
+            "US": "", "UK": ".L",
+            "India": ".NS", "UAE": ".AD", "Other": ""}
 
 
 def batch_download(tickers: list[str], period: str = "1y") -> dict:

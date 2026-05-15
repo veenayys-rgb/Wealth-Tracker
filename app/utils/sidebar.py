@@ -130,8 +130,9 @@ def render_sidebar():
                             except Exception as e:
                                 wl_errors.append(f"Region {region} download failed: {e}")
                         if wl_rows:
-                            service_upsert("watchlist_prices", wl_rows, conflict_col="symbol")
-                            _updated += len(wl_rows)
+                            deduped = list({r["symbol"]: r for r in wl_rows}.values())
+                            service_upsert("watchlist_prices", deduped, conflict_col="symbol")
+                            _updated += len(deduped)
                     st.session_state["_wl_errors"] = wl_errors
 
                     st.success(f"✅ Prices updated ({_updated} securities).")

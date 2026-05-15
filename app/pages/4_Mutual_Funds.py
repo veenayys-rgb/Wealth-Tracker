@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+from utils.sidebar import render_sidebar
 import pandas as pd
 import datetime
 from utils.db     import fetch, service_upsert
@@ -11,6 +12,7 @@ from utils.fmt    import ind_num, total_metrics
 
 st.set_page_config(page_title="Mutual Funds | Wealth Tracker", page_icon="📊", layout="wide")
 st.title("📊 Mutual Funds")
+render_sidebar()
 
 navs      = {r["isin"]: r for r in fetch("mf_navs")}
 nav_dates = list({r["nav_date"] for r in navs.values() if r.get("nav_date")})

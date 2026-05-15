@@ -3,6 +3,7 @@ import sys, os, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, get_forex, service_upsert
 from utils.config import load, save
@@ -10,6 +11,7 @@ from utils.fmt    import ind_num, plain_num, total_metrics
 
 st.set_page_config(page_title="International Equity | Wealth Tracker", page_icon="🌍", layout="wide")
 st.title("🌍 International Equity")
+render_sidebar()
 
 forex        = get_forex()
 aed          = forex.get("AED_INR", 0)

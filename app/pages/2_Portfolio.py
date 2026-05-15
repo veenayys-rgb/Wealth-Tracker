@@ -5,6 +5,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, get_forex
 from utils.config import load
@@ -12,6 +13,7 @@ from utils.fmt    import inr
 
 st.set_page_config(page_title="Portfolio | Wealth Tracker", page_icon="💼", layout="wide")
 st.title("💼 Portfolio")
+render_sidebar()
 
 forex = get_forex()
 aed   = forex.get("AED_INR", 0)

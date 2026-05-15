@@ -3,12 +3,14 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch
 from utils.config import load, save
 
 st.set_page_config(page_title="Watchlist | Wealth Tracker", page_icon="👀", layout="wide")
 st.title("👀 Watchlist")
+render_sidebar()
 
 wp        = {r["symbol"]: r for r in fetch("watchlist_prices")}
 items     = load("watchlist.json")

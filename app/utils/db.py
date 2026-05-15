@@ -36,3 +36,9 @@ def service_upsert(table: str, rows: list[dict], conflict_col: str = "symbol"):
     """Upsert using service key — for refreshing price tables from the app."""
     if rows:
         _service_client().table(table).upsert(rows, on_conflict=conflict_col).execute()
+
+
+def service_delete(table: str, col: str, values: list):
+    """Delete rows where col is in values, using service key."""
+    if values:
+        _service_client().table(table).delete().in_(col, values).execute()

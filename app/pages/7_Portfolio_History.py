@@ -6,7 +6,7 @@ import streamlit as st
 from utils.sidebar import render_sidebar
 import pandas as pd
 import plotly.graph_objects as go
-from utils.db  import fetch
+from utils.db  import fetch, service_delete
 from utils.fmt import ind_num
 
 st.set_page_config(page_title="Portfolio History | Wealth Tracker", page_icon="📅", layout="wide")
@@ -124,6 +124,25 @@ with tab_all:
     final["Total Invested"] = df["total_invested"].values
     final["Total CV"]       = df["total_cv"].values
     history_table(final, money_cols + ["Total Invested", "Total CV"])
+
+    st.divider()
+    chk_rows = [{"☑": False, "Date": d.strftime("%d-%b-%Y"), "Total Invested": ind_num(i), "Total CV": ind_num(c)}
+                for d, i, c in zip(df["date"], df["total_invested"], df["total_cv"])]
+    chk_edited = st.data_editor(
+        pd.DataFrame(chk_rows),
+        column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+        disabled=["Date", "Total Invested", "Total CV"],
+        hide_index=True, use_container_width=True, key="del_chk_history",
+    )
+    if st.button("🗑️ Delete Selected", key="del_history_btn"):
+        sel = chk_edited[chk_edited["☑"]].index.tolist()
+        if sel:
+            dates_to_del = [df["date"].iloc[i].strftime("%Y-%m-%d") for i in sel]
+            service_delete("portfolio_history", "date", dates_to_del)
+            st.success(f"✅ {len(sel)} record(s) deleted.")
+            st.rerun()
+        else:
+            st.warning("Select at least one row to delete.")
 
 
 # ── Vinay (Equity + MF) ───────────────────────────────────────────────────────

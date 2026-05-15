@@ -108,13 +108,12 @@ def render_sidebar():
                             try:
                                 raw   = yf.download(tickers, period="1y", auto_adjust=True,
                                                     progress=False, group_by="ticker", threads=True)
-                                multi = len(tickers) > 1
                                 for item, t in zip(group, tickers):
                                     sym = item["symbol"].upper()
                                     try:
-                                        closes = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
-                                        highs  = raw[t]["High"].dropna()  if multi else raw["High"].dropna()
-                                        lows   = raw[t]["Low"].dropna()   if multi else raw["Low"].dropna()
+                                        closes = raw[t]["Close"].dropna()
+                                        highs  = raw[t]["High"].dropna()
+                                        lows   = raw[t]["Low"].dropna()
                                         if len(closes) > 0:
                                             wl_rows.append({
                                                 "symbol":        sym,

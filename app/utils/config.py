@@ -24,6 +24,13 @@ def _client() -> Client:
     return create_client(url, key)
 
 
+@st.cache_resource
+def _write_client() -> Client:
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["service_key"]
+    return create_client(url, key)
+
+
 def load(filename: str) -> list:
     table, owner = TABLE_MAP[filename]
     q = _client().table(table).select("*")
@@ -35,7 +42,7 @@ def load(filename: str) -> list:
 
 def save(filename: str, data: list):
     table, owner = TABLE_MAP[filename]
-    client = _client()
+    client = _write_client()
     dq = client.table(table).delete()
     if owner:
         dq = dq.eq("owner", owner)

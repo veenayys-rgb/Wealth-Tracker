@@ -134,8 +134,8 @@ if holdings:
             if price_rows:
                 try:
                     service_upsert("equity_india_prices", price_rows, conflict_col="symbol")
-                except Exception:
-                    pass
+                except Exception as e:
+                    st.warning(f"Holdings saved but price update failed: {e}")
             st.success("✅ Changes saved.")
             st.rerun()
 

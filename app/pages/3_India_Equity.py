@@ -88,8 +88,6 @@ st.divider()
 # ── Quick Edit ─────────────────────────────────────────────────────────────────
 if holdings:
     with st.expander("✏️ Quick Edit"):
-        if "_price_debug" in st.session_state:
-            st.info(st.session_state.pop("_price_debug"))
         qe_rows = []
         for h in holdings:
             sym = h["symbol"].upper()
@@ -135,13 +133,12 @@ if holdings:
                                        "fetched_at": datetime.datetime.utcnow().isoformat()})
             save("equity_india.json", holdings)
             if price_rows:
+                deduped = list({r["symbol"]: r for r in price_rows}.values())
                 try:
-                    service_upsert("equity_india_prices", price_rows, conflict_col="symbol")
-                    st.session_state["_price_debug"] = f"✅ Prices updated: {price_rows}"
+                    service_upsert("equity_india_prices", deduped, conflict_col="symbol")
                 except Exception as e:
-                    st.session_state["_price_debug"] = f"❌ Price update failed: {e}"
-            else:
-                st.session_state["_price_debug"] = f"⚠️ price_rows was empty — raw values: {[edited.iloc[i]['Current Price (₹)'] for i in range(len(holdings))]}"
+                    st.warning(f"Holdings saved but price update failed: {e}")
+            st.success("✅ Changes saved.")
             st.rerun()
 
 # ── Add ────────────────────────────────────────────────────────────────────────

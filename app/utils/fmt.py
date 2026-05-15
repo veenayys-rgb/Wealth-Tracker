@@ -54,6 +54,17 @@ def colour(val) -> str:
         return ""
 
 
+def metric_card(label: str, value: str, delta: str = None) -> str:
+    """Return an HTML metric card for use with st.markdown(unsafe_allow_html=True)."""
+    delta_html = f'<div style="font-size:0.85em;color:{"green" if delta and not delta.startswith("-") else "red"}">{delta}</div>' if delta else ""
+    return (
+        f'<div style="background:#f0f2f6;border-radius:8px;padding:16px 20px;text-align:center">'
+        f'<div style="font-size:0.85em;color:#555;margin-bottom:4px">{label}</div>'
+        f'<div style="font-size:1.4em;font-weight:700">{value}</div>'
+        f'{delta_html}</div>'
+    )
+
+
 def total_metrics(inv: float, cv: float, label_inv="Total Invested", label_cv="Current Value"):
     """Render a 3-column metric row for portfolio totals."""
     import streamlit as st

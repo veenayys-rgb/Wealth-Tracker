@@ -61,7 +61,7 @@ def history_table(view_df, money_cols, date_label="Date"):
                .format(fmt)
                .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
                               "color:red"   if isinstance(v, float) and v <  0 else "",
-                    subset=["Gain/Loss", "Return %"] if "Gain/Loss" in display.columns else []),
+                    subset=[c for c in ["Gain/Loss", "Return %"] if c in display.columns]),
         use_container_width=True,
         hide_index=True,
     )

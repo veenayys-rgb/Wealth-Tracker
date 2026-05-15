@@ -103,6 +103,44 @@ with st.sidebar:
                     except Exception:
                         pass
 
+                # Watchlist
+                SUFFIX = {"India": ".NS", "UAE": ".AD", "US": "", "UK": ".L", "Other": ""}
+                holdings_wl = load("watchlist.json")
+                if holdings_wl:
+                    wl_rows = []
+                    by_region: dict = {}
+                    for item in holdings_wl:
+                        by_region.setdefault(item.get("region", "Other"), []).append(item)
+                    for region, group in by_region.items():
+                        suffix  = SUFFIX.get(region, "")
+                        tickers = [f"{i['symbol'].upper()}{suffix}" for i in group]
+                        try:
+                            raw   = yf.download(tickers, period="1y", auto_adjust=True,
+                                                progress=False, group_by="ticker", threads=True)
+                            multi = len(tickers) > 1
+                            for item, t in zip(group, tickers):
+                                sym = item["symbol"].upper()
+                                try:
+                                    closes = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
+                                    highs  = raw[t]["High"].dropna()  if multi else raw["High"].dropna()
+                                    lows   = raw[t]["Low"].dropna()   if multi else raw["Low"].dropna()
+                                    if len(closes) > 0:
+                                        wl_rows.append({
+                                            "symbol":        sym,
+                                            "last_close":    round(float(closes.iloc[-1]), 4),
+                                            "current_price": round(float(closes.iloc[-1]), 4),
+                                            "high_52w":      round(float(highs.max()), 4),
+                                            "low_52w":       round(float(lows.min()), 4),
+                                            "fetched_at":    datetime.datetime.utcnow().isoformat(),
+                                        })
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                    if wl_rows:
+                        service_upsert("watchlist_prices", wl_rows, conflict_col="symbol")
+                        _updated += len(wl_rows)
+
                 st.success(f"✅ Prices updated ({_updated} securities). Reload the page to see latest values.")
             except Exception as e:
                 st.error(f"Refresh failed: {e}")

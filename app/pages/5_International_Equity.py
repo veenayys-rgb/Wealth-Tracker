@@ -37,9 +37,11 @@ def fx_rate(curr):
     return aed if curr == "AED" else usd
 
 
-tabs = st.tabs([o for o, _ in OWNERS])
+all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
+owner_tabs = all_tabs[:len(OWNERS)]
+tab_all    = all_tabs[-1]
 
-for tab, (owner, fname) in zip(tabs, OWNERS):
+for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings = load(fname)
 
@@ -258,3 +260,67 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
                         save(fname, holdings)
                         st.success("✅ Changes saved.")
                         st.rerun()
+
+
+# ── All ───────────────────────────────────────────────────────────────────────
+with tab_all:
+    all_rows = []
+    grand_inv = grand_cv = 0.0
+    for owner, fname in OWNERS:
+        for h in load(fname):
+            sym     = h["symbol"].upper()
+            qty     = float(h.get("qty", 0))
+            cost    = float(h.get("avg_cost", 0))
+            curr    = h.get("currency", "USD")
+            rate    = fx_rate(curr)
+            price   = prices.get(sym, 0)
+            inv_f   = qty * cost
+            cv_f    = qty * price if price > 0 else inv_f
+            inv_inr = inv_f * rate
+            cv_inr  = cv_f  * rate
+            gl_inr  = cv_inr - inv_inr
+            ret     = (gl_inr / inv_inr * 100) if inv_inr > 0 else 0.0
+            grand_inv += inv_inr
+            grand_cv  += cv_inr
+            all_rows.append({
+                "Owner":               owner,
+                "Company Name":        h.get("name", "") or "—",
+                "Symbol":              sym,
+                "Currency":            curr,
+                "Qty":                 qty,
+                "Avg Cost (FCY)":      cost,
+                "Current Price (FCY)": price if price > 0 else None,
+                "Invested (INR)":      inv_inr,
+                "Current Value (INR)": cv_inr,
+                "Gain/Loss (INR)":     gl_inr,
+                "Return %":            ret,
+                "% of Portfolio":      0.0,
+            })
+
+    if all_rows:
+        safe = grand_cv if grand_cv > 0 else 1.0
+        for r in all_rows:
+            r["% of Portfolio"] = r["Current Value (INR)"] / safe * 100
+        df  = pd.DataFrame(all_rows)
+        fmt = {
+            "Qty":                 lambda v: f"{v:,.0f}" if v is not None else "—",
+            "Avg Cost (FCY)":      lambda v: plain_num(v, decimals=4) if v is not None else "—",
+            "Current Price (FCY)": lambda v: plain_num(v, decimals=4) if v is not None else "—",
+            "Invested (INR)":      lambda v: ind_num(v),
+            "Current Value (INR)": lambda v: ind_num(v),
+            "Gain/Loss (INR)":     lambda v: ind_num(v),
+            "Return %":            lambda v: f"{v:+.2f}%" if v is not None else "—",
+            "% of Portfolio":      lambda v: f"{v:.2f}%" if v is not None else "—",
+        }
+        st.dataframe(
+            df.style
+              .format(fmt)
+              .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                             "color:red"   if isinstance(v, float) and v <  0 else "",
+                   subset=["Gain/Loss (INR)", "Return %"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        total_metrics(grand_inv, grand_cv)
+    else:
+        st.info("No international equity holdings yet.")

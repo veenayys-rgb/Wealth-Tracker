@@ -24,9 +24,11 @@ OWNERS = [
     ("Anusha", "equity_india_anusha.json"),
 ]
 
-tabs = st.tabs([o for o, _ in OWNERS])
+all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
+owner_tabs = all_tabs[:len(OWNERS)]
+tab_all    = all_tabs[-1]
 
-for tab, (owner, fname) in zip(tabs, OWNERS):
+for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings = load(fname)
 
@@ -229,3 +231,62 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
                         save(fname, holdings)
                         st.success("✅ Changes saved.")
                         st.rerun()
+
+
+# ── All ───────────────────────────────────────────────────────────────────────
+with tab_all:
+    all_rows = []
+    grand_inv = grand_cv = 0.0
+    for owner, fname in OWNERS:
+        for h in load(fname):
+            sym   = h["symbol"].upper()
+            qty   = float(h.get("qty", 0))
+            cost  = float(h.get("avg_cost", 0))
+            price = prices.get(sym, 0)
+            inv   = qty * cost
+            cv    = qty * price if price > 0 else inv
+            gl    = cv - inv
+            ret   = (gl / inv * 100) if inv > 0 else 0.0
+            grand_inv += inv
+            grand_cv  += cv
+            all_rows.append({
+                "Owner":             owner,
+                "Company Name":      h.get("company_name", "") or "—",
+                "Symbol":            sym,
+                "Qty":               qty,
+                "Avg Cost (₹)":      cost,
+                "Invested (₹)":      inv,
+                "Current Price (₹)": price if price > 0 else None,
+                "Current Value (₹)": cv,
+                "Gain/Loss (₹)":     gl,
+                "Return %":          ret,
+                "% of Portfolio":    0.0,
+            })
+
+    if all_rows:
+        safe = grand_cv if grand_cv > 0 else 1.0
+        for r in all_rows:
+            r["% of Portfolio"] = r["Current Value (₹)"] / safe * 100
+        df  = pd.DataFrame(all_rows)
+        fmt = {
+            "Qty":               lambda v: f"{v:,.0f}" if v is not None else "—",
+            "Avg Cost (₹)":      lambda v: ind_num(v) if v is not None else "—",
+            "Invested (₹)":      lambda v: ind_num(v),
+            "Current Price (₹)": lambda v: ind_num(v) if v is not None else "—",
+            "Current Value (₹)": lambda v: ind_num(v),
+            "Gain/Loss (₹)":     lambda v: ind_num(v),
+            "Return %":          lambda v: f"{v:+.2f}%" if v is not None else "—",
+            "% of Portfolio":    lambda v: f"{v:.2f}%" if v is not None else "—",
+        }
+        st.dataframe(
+            df.style
+              .format(fmt)
+              .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                             "color:red"   if isinstance(v, float) and v <  0 else "",
+                   subset=["Gain/Loss (₹)", "Return %"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        total_metrics(grand_inv, grand_cv)
+    else:
+        st.info("No India equity holdings yet.")

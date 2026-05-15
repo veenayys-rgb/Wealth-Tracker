@@ -25,9 +25,11 @@ OWNERS = [
     ("Anusha", "mutual_funds_anusha.json"),
 ]
 
-tabs = st.tabs([o for o, _ in OWNERS])
+all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
+owner_tabs = all_tabs[:len(OWNERS)]
+tab_all    = all_tabs[-1]
 
-for tab, (owner, fname) in zip(tabs, OWNERS):
+for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings = load(fname)
 
@@ -214,4 +216,65 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
                         save(fname, holdings)
                         st.success("✅ Details saved.")
                         st.rerun()
+
+
+# ── All ───────────────────────────────────────────────────────────────────────
+with tab_all:
+    all_rows = []
+    grand_inv = grand_cv = 0.0
+    for owner, fname in OWNERS:
+        for h in load(fname):
+            isin  = h.get("isin", "").upper()
+            units = float(h.get("units", 0))
+            anav  = float(h.get("avg_nav", 0))
+            nav_r = navs.get(isin, {})
+            nav   = float(nav_r.get("nav", 0)) if nav_r else 0.0
+            amfi  = nav_r.get("amfi_name", "") if nav_r else ""
+            inv   = units * anav
+            cv    = units * nav if nav > 0 else inv
+            gl    = cv - inv
+            ret   = (gl / inv * 100) if inv > 0 else 0.0
+            grand_inv += inv
+            grand_cv  += cv
+            all_rows.append({
+                "Owner":             owner,
+                "Fund Name (AMFI)":  amfi or h.get("fund_name") or "—",
+                "Units Held":        units,
+                "Avg NAV (₹)":       anav,
+                "Invested (₹)":      inv,
+                "Current NAV (₹)":   nav if nav > 0 else None,
+                "Current Value (₹)": cv,
+                "Gain/Loss (₹)":     gl,
+                "Return %":          ret,
+                "% of Portfolio":    0.0,
+            })
+
+    if all_rows:
+        safe = grand_cv if grand_cv > 0 else 1.0
+        for r in all_rows:
+            r["% of Portfolio"] = r["Current Value (₹)"] / safe * 100
+        df  = pd.DataFrame(all_rows)
+        fmt = {
+            "Units Held":        lambda v: f"{v:,.3f}" if v is not None else "—",
+            "Avg NAV (₹)":       lambda v: ind_num(v, decimals=4) if v is not None else "—",
+            "Invested (₹)":      lambda v: ind_num(v),
+            "Current NAV (₹)":   lambda v: ind_num(v, decimals=4) if v is not None else "—",
+            "Current Value (₹)": lambda v: ind_num(v),
+            "Gain/Loss (₹)":     lambda v: ind_num(v),
+            "Return %":          lambda v: f"{v:+.2f}%" if v is not None else "—",
+            "% of Portfolio":    lambda v: f"{v:.2f}%" if v is not None else "—",
+        }
+        st.dataframe(
+            df.style
+              .format(fmt)
+              .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                             "color:red"   if isinstance(v, float) and v <  0 else "",
+                   subset=["Gain/Loss (₹)", "Return %"]),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"Fund Name (AMFI)": st.column_config.TextColumn(width="large")},
+        )
+        total_metrics(grand_inv, grand_cv)
+    else:
+        st.info("No mutual fund holdings yet.")
 

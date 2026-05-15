@@ -81,6 +81,29 @@ def history_table(view_df, money_cols, date_label="Date"):
     )
 
 
+def delete_widget(source_df, tab_key):
+    """Checkbox + delete button for any history tab."""
+    st.divider()
+    chk_rows = [{"☑": False, "Date": d.strftime("%d-%b-%Y"),
+                 "Total Invested": ind_num(i), "Total CV": ind_num(c)}
+                for d, i, c in zip(source_df["date"], source_df["total_invested"], source_df["total_cv"])]
+    chk_edited = st.data_editor(
+        pd.DataFrame(chk_rows),
+        column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+        disabled=["Date", "Total Invested", "Total CV"],
+        hide_index=True, use_container_width=True, key=f"del_chk_{tab_key}",
+    )
+    if st.button("🗑️ Delete Selected", key=f"del_btn_{tab_key}"):
+        sel = chk_edited[chk_edited["☑"]].index.tolist()
+        if sel:
+            dates_to_del = [source_df["date"].iloc[i].strftime("%Y-%m-%d") for i in sel]
+            service_delete("portfolio_history", "date", dates_to_del)
+            st.success(f"✅ {len(sel)} record(s) deleted.")
+            st.rerun()
+        else:
+            st.warning("Select at least one row to delete.")
+
+
 # ── All ───────────────────────────────────────────────────────────────────────
 with tab_all:
     view = df[["date", "shares_invested", "shares_cv",
@@ -110,25 +133,7 @@ with tab_all:
     final["Total Invested"] = df["total_invested"].values
     final["Total CV"]       = df["total_cv"].values
     history_table(final, money_cols + ["Total Invested", "Total CV"])
-
-    st.divider()
-    chk_rows = [{"☑": False, "Date": d.strftime("%d-%b-%Y"), "Total Invested": ind_num(i), "Total CV": ind_num(c)}
-                for d, i, c in zip(df["date"], df["total_invested"], df["total_cv"])]
-    chk_edited = st.data_editor(
-        pd.DataFrame(chk_rows),
-        column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
-        disabled=["Date", "Total Invested", "Total CV"],
-        hide_index=True, use_container_width=True, key="del_chk_history",
-    )
-    if st.button("🗑️ Delete Selected", key="del_history_btn"):
-        sel = chk_edited[chk_edited["☑"]].index.tolist()
-        if sel:
-            dates_to_del = [df["date"].iloc[i].strftime("%Y-%m-%d") for i in sel]
-            service_delete("portfolio_history", "date", dates_to_del)
-            st.success(f"✅ {len(sel)} record(s) deleted.")
-            st.rerun()
-        else:
-            st.warning("Select at least one row to delete.")
+    delete_widget(df, "all")
 
 
 # ── Vinay (Equity + MF) ───────────────────────────────────────────────────────
@@ -149,6 +154,7 @@ with tab_vinay:
         "gain_loss":       "Gain/Loss",
     })
     history_table(disp, ["Equity Invested", "Equity CV", "MF Invested", "MF CV", "Total Invested", "Total CV", "Gain/Loss"])
+    delete_widget(df, "vinay")
 
 
 # ── Harsh MF ──────────────────────────────────────────────────────────────────
@@ -163,6 +169,7 @@ with tab_harsh:
         "gain_loss":    "Gain/Loss",
     })
     history_table(disp, ["MF Invested", "MF Current Value", "Gain/Loss"])
+    delete_widget(df, "harsh")
 
 
 # ── Anusha MF ─────────────────────────────────────────────────────────────────
@@ -179,5 +186,6 @@ with tab_anusha:
             "gain_loss":     "Gain/Loss",
         })
         history_table(disp, ["MF Invested", "MF Current Value", "Gain/Loss"])
+        delete_widget(df, "anusha")
     else:
         st.info("No MF history for Anusha yet — will appear once the daily fetcher runs with her holdings.")

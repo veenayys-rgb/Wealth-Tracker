@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.sidebar import render_sidebar
 import pandas as pd
+import plotly.graph_objects as go
 from utils.db  import fetch
 from utils.fmt import ind_num
 
@@ -36,15 +37,42 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
     c2.metric("Current Value", ind_num(latest[label_cv]))
     c3.metric("Gain / Loss",   ind_num(gl), f"{ret:+.2f}%")
 
-    st.subheader("Trend")
-    chart_data = chart_df.set_index(date_col)[[label_inv, label_cv]]
-    chart_data.columns = ["Invested", "Current Value"]
-    st.line_chart(chart_data, use_container_width=True)
+    dates     = chart_df[date_col]
+    inv_vals  = chart_df[label_inv]
+    cv_vals   = chart_df[label_cv]
+    gl_vals   = cv_vals - inv_vals
 
-    gl_series = chart_df.set_index(date_col)[[label_cv]].copy()
-    gl_series["Gain/Loss"] = chart_df[label_cv].values - chart_df[label_inv].values
+    # ── Trend line chart ──────────────────────────────────────────────────────
+    st.subheader("Trend")
+    y_min = min(inv_vals.min(), cv_vals.min()) * 0.995
+    y_max = max(inv_vals.max(), cv_vals.max()) * 1.005
+    fig_trend = go.Figure()
+    fig_trend.add_trace(go.Scatter(x=dates, y=inv_vals, mode="lines+markers",
+                                   name="Invested", line=dict(color="#636EFA", width=2)))
+    fig_trend.add_trace(go.Scatter(x=dates, y=cv_vals,  mode="lines+markers",
+                                   name="Current Value", line=dict(color="#00CC96", width=2)))
+    fig_trend.update_layout(
+        yaxis=dict(range=[y_min, y_max], tickformat=",.0f"),
+        xaxis=dict(title="Date"),
+        hovermode="x unified", height=380,
+        margin=dict(l=0, r=0, t=10, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+    # ── Gain/Loss bar chart ───────────────────────────────────────────────────
     st.subheader("Gain / Loss over time")
-    st.bar_chart(gl_series[["Gain/Loss"]], use_container_width=True)
+    colours = ["#00CC96" if v >= 0 else "#EF553B" for v in gl_vals]
+    fig_gl = go.Figure()
+    fig_gl.add_trace(go.Bar(x=dates, y=gl_vals, marker_color=colours, name="Gain/Loss"))
+    fig_gl.update_layout(
+        yaxis=dict(tickformat=",.0f"),
+        xaxis=dict(title="Date"),
+        hovermode="x unified", height=300,
+        margin=dict(l=0, r=0, t=10, b=0),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_gl, use_container_width=True)
 
 
 def history_table(view_df, money_cols, date_label="Date"):

@@ -37,10 +37,9 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
     c2.metric("Current Value", ind_num(latest[label_cv]))
     c3.metric("Gain / Loss",   ind_num(gl), f"{ret:+.2f}%")
 
-    dates     = chart_df[date_col]
-    inv_vals  = chart_df[label_inv]
-    cv_vals   = chart_df[label_cv]
-    gl_vals   = cv_vals - inv_vals
+    dates    = chart_df[date_col]
+    inv_vals = chart_df[label_inv]
+    cv_vals  = chart_df[label_cv]
 
     # ── Trend line chart ──────────────────────────────────────────────────────
     st.subheader("Trend")
@@ -60,19 +59,6 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
     )
     st.plotly_chart(fig_trend, use_container_width=True)
 
-    # ── Gain/Loss bar chart ───────────────────────────────────────────────────
-    st.subheader("Gain / Loss over time")
-    colours = ["#00CC96" if v >= 0 else "#EF553B" for v in gl_vals]
-    fig_gl = go.Figure()
-    fig_gl.add_trace(go.Bar(x=dates, y=gl_vals, marker_color=colours, name="Gain/Loss"))
-    fig_gl.update_layout(
-        yaxis=dict(tickformat=",.0f"),
-        xaxis=dict(title="Date"),
-        hovermode="x unified", height=300,
-        margin=dict(l=0, r=0, t=10, b=0),
-        showlegend=False,
-    )
-    st.plotly_chart(fig_gl, use_container_width=True)
 
 
 def history_table(view_df, money_cols, date_label="Date"):

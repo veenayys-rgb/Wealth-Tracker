@@ -125,15 +125,18 @@ if holdings:
                 holdings[i]["buy_date"]     = str(edited.iloc[i]["Buy Date"])
                 holdings[i]["qty"]          = float(edited.iloc[i]["Qty"])
                 holdings[i]["avg_cost"]     = float(edited.iloc[i]["Avg Cost (₹)"])
-                new_price = float(edited.iloc[i]["Current Price (₹)"] or 0)
+                raw_price = edited.iloc[i]["Current Price (₹)"]
+                new_price = float(raw_price) if raw_price is not None else 0.0
                 if new_price > 0:
                     price_rows.append({"symbol": holdings[i]["symbol"],
                                        "price": round(new_price, 4),
                                        "fetched_at": datetime.datetime.utcnow().isoformat()})
+            st.write(f"DEBUG — price_rows: {price_rows}")
             save("equity_india.json", holdings)
             if price_rows:
                 try:
                     service_upsert("equity_india_prices", price_rows, conflict_col="symbol")
+                    st.success(f"✅ Prices updated: {[r['symbol'] for r in price_rows]}")
                 except Exception as e:
                     st.warning(f"Holdings saved but price update failed: {e}")
             st.success("✅ Changes saved.")

@@ -29,12 +29,11 @@ def batch_download(tickers: list[str], period: str = "1y") -> dict:
             group_by="ticker",
             threads=True,
         )
-        multi = len(tickers) > 1
         for t in tickers:
             try:
-                close = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
-                highs = raw[t]["High"].dropna()  if multi else raw["High"].dropna()
-                lows  = raw[t]["Low"].dropna()   if multi else raw["Low"].dropna()
+                close = raw[t]["Close"].dropna()
+                highs = raw[t]["High"].dropna()
+                lows  = raw[t]["Low"].dropna()
                 price = round(float(close.iloc[-1]), 4) if len(close) > 0 else 0
                 if price > 0:
                     results[t] = {

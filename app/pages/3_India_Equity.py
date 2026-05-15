@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 import pandas as pd
-from utils.db     import fetch
+from utils.db     import fetch, service_upsert
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics
 
@@ -85,33 +85,54 @@ else:
 
 st.divider()
 
-# ── Quick Edit — Qty & Avg Cost ────────────────────────────────────────────────
+# ── Quick Edit ─────────────────────────────────────────────────────────────────
 if holdings:
-    with st.expander("✏️ Quick Edit — Qty & Avg Cost"):
-        qe_rows = [{
-            "Company":     h.get("company_name") or h.get("symbol", "—"),
-            "Symbol":      h["symbol"].upper(),
-            "Qty":         float(h.get("qty", 0)),
-            "Avg Cost (₹)": float(h.get("avg_cost", 0)),
-        } for h in holdings]
+    with st.expander("✏️ Quick Edit"):
+        qe_rows = []
+        for h in holdings:
+            sym = h["symbol"].upper()
+            qe_rows.append({
+                "Symbol":            sym,
+                "Holding Type":      h.get("holding_type", "NRE"),
+                "Source":            h.get("source", "Market"),
+                "Buy Date":          h.get("buy_date", ""),
+                "Qty":               float(h.get("qty", 0)),
+                "Avg Cost (₹)":      float(h.get("avg_cost", 0)),
+                "Current Price (₹)": prices.get(sym, 0.0),
+            })
         qe_df  = pd.DataFrame(qe_rows)
         edited = st.data_editor(
             qe_df,
             column_config={
-                "Company":      st.column_config.TextColumn(disabled=True, width="medium"),
-                "Symbol":       st.column_config.TextColumn(disabled=True),
-                "Qty":          st.column_config.NumberColumn(format="%.4f", min_value=0.0),
-                "Avg Cost (₹)": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                "Symbol":            st.column_config.TextColumn(),
+                "Holding Type":      st.column_config.SelectboxColumn(options=["NRE", "NRO"]),
+                "Source":            st.column_config.SelectboxColumn(options=["Market", "IPO", "DAD"]),
+                "Buy Date":          st.column_config.TextColumn(),
+                "Qty":               st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                "Avg Cost (₹)":      st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                "Current Price (₹)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
             },
             hide_index=True,
             use_container_width=True,
             key="qe_equity",
         )
         if st.button("💾 Save Changes", key="qsave_equity"):
+            price_rows = []
             for i in range(len(holdings)):
-                holdings[i]["qty"]      = float(edited.iloc[i]["Qty"])
-                holdings[i]["avg_cost"] = float(edited.iloc[i]["Avg Cost (₹)"])
+                holdings[i]["symbol"]       = str(edited.iloc[i]["Symbol"]).upper()
+                holdings[i]["holding_type"] = str(edited.iloc[i]["Holding Type"])
+                holdings[i]["source"]       = str(edited.iloc[i]["Source"])
+                holdings[i]["buy_date"]     = str(edited.iloc[i]["Buy Date"])
+                holdings[i]["qty"]          = float(edited.iloc[i]["Qty"])
+                holdings[i]["avg_cost"]     = float(edited.iloc[i]["Avg Cost (₹)"])
+                new_price = float(edited.iloc[i]["Current Price (₹)"] or 0)
+                if new_price > 0:
+                    price_rows.append({"symbol": holdings[i]["symbol"],
+                                       "price": round(new_price, 4),
+                                       "fetched_at": datetime.datetime.utcnow().isoformat()})
             save("equity_india.json", holdings)
+            if price_rows:
+                service_upsert("equity_india_prices", price_rows, conflict_col="symbol")
             st.success("✅ Changes saved.")
             st.rerun()
 

@@ -4,7 +4,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 import pandas as pd
-from utils.db     import fetch
+import datetime
+from utils.db     import fetch, service_upsert
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics
 
@@ -98,35 +99,54 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
 
         st.divider()
 
-        # ── Quick Edit — Units & NAV ───────────────────────────────────────────
+        # ── Quick Edit ────────────────────────────────────────────────────────
         if holdings:
-            with st.expander("✏️ Quick Edit — Units & NAV"):
+            with st.expander("✏️ Quick Edit"):
                 qe_rows = []
                 for h in holdings:
                     isin = h.get("isin", "").upper()
                     amfi = (navs.get(isin, {}).get("amfi_name") or h.get("fund_name") or isin or "—")
+                    nav_val = float(navs.get(isin, {}).get("nav", 0) or 0)
                     qe_rows.append({
-                        "Fund Name (AMFI)": amfi,
+                        "Fund Name":        h.get("fund_name", "") or "—",
+                        "Folio No":         h.get("folio_no", "") or "",
+                        "ISIN":             isin,
                         "Units Held":       float(h.get("units", 0)),
                         "Avg NAV (₹)":      float(h.get("avg_nav", 0)),
+                        "Current NAV (₹)":  nav_val,
                     })
                 qe_df  = pd.DataFrame(qe_rows)
                 edited = st.data_editor(
                     qe_df,
                     column_config={
-                        "Fund Name (AMFI)": st.column_config.TextColumn(disabled=True, width="large"),
-                        "Units Held":       st.column_config.NumberColumn(format="%.3f", min_value=0.0),
-                        "Avg NAV (₹)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                        "Fund Name":       st.column_config.TextColumn(width="large"),
+                        "Folio No":        st.column_config.TextColumn(),
+                        "ISIN":            st.column_config.TextColumn(),
+                        "Units Held":      st.column_config.NumberColumn(format="%.3f", min_value=0.0),
+                        "Avg NAV (₹)":     st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                        "Current NAV (₹)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                     },
                     hide_index=True,
                     use_container_width=True,
                     key=f"qe_{owner}",
                 )
                 if st.button("💾 Save Changes", key=f"qsave_{owner}"):
+                    nav_rows = []
                     for i in range(len(holdings)):
-                        holdings[i]["units"]   = float(edited.iloc[i]["Units Held"])
-                        holdings[i]["avg_nav"] = float(edited.iloc[i]["Avg NAV (₹)"])
+                        holdings[i]["fund_name"] = str(edited.iloc[i]["Fund Name"])
+                        holdings[i]["folio_no"]  = str(edited.iloc[i]["Folio No"])
+                        holdings[i]["isin"]      = str(edited.iloc[i]["ISIN"]).upper()
+                        holdings[i]["units"]     = float(edited.iloc[i]["Units Held"])
+                        holdings[i]["avg_nav"]   = float(edited.iloc[i]["Avg NAV (₹)"])
+                        new_nav = float(edited.iloc[i]["Current NAV (₹)"] or 0)
+                        if new_nav > 0:
+                            nav_rows.append({"isin": holdings[i]["isin"],
+                                             "nav": round(new_nav, 4),
+                                             "nav_date": datetime.date.today().isoformat(),
+                                             "fetched_at": datetime.datetime.utcnow().isoformat()})
                     save(fname, holdings)
+                    if nav_rows:
+                        service_upsert("mf_navs", nav_rows, conflict_col="isin")
                     st.success("✅ Changes saved.")
                     st.rerun()
 

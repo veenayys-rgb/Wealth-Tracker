@@ -5,8 +5,7 @@ Runs: forex → AMFI → equity India → equity International → watchlist →
 """
 import sys, os, datetime, time
 
-ICLOUD = os.path.expanduser("~/Library/Mobile Documents/com~apple~CloudDocs/WealthTracker")
-sys.path.insert(0, os.path.join(ICLOUD, "fetcher"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from forex        import fetch_forex
 from mutual_funds import fetch_amfi_navs

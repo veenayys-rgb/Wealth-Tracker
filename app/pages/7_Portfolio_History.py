@@ -106,7 +106,7 @@ with tab_vinay:
     view["gain_loss"]      = view["vinay_cv"] - view["vinay_invested"]
     chart_and_table(view, "vinay_invested", "vinay_cv")
     st.divider()
-    disp = view.rename(columns={
+    disp = view[["date", "shares_invested", "shares_cv", "mf_inv_vinay", "mf_cv_vinay", "vinay_invested", "vinay_cv", "gain_loss"]].rename(columns={
         "shares_invested": "Equity Invested",
         "shares_cv":       "Equity CV",
         "mf_inv_vinay":    "MF Invested",

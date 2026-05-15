@@ -82,6 +82,25 @@ if holdings:
     )
     total_metrics(total_inv, total_cv)
 
+    st.divider()
+    chk_rows = [{"☑": False, "Symbol": h["symbol"].upper(), "Company Name": h.get("company_name", "")} for h in holdings]
+    chk_edited = st.data_editor(
+        pd.DataFrame(chk_rows),
+        column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+        disabled=["Symbol", "Company Name"],
+        hide_index=True, use_container_width=True, key="del_chk_equity",
+    )
+    if st.button("🗑️ Delete Selected", key="del_eq_btn"):
+        sel = chk_edited[chk_edited["☑"]].index.tolist()
+        if sel:
+            for j in sorted(sel, reverse=True):
+                holdings.pop(j)
+            save("equity_india.json", holdings)
+            st.success(f"✅ {len(sel)} holding(s) removed.")
+            st.rerun()
+        else:
+            st.warning("Select at least one row to delete.")
+
 else:
     st.info("No holdings yet. Add your first holding below.")
 
@@ -208,14 +227,3 @@ if holdings:
                 st.success("✅ Changes saved.")
                 st.rerun()
 
-    # ── Delete ─────────────────────────────────────────────────────────────────
-    with st.expander("🗑️ Delete Holding"):
-        opts_d = [f"{h['symbol']} — {h.get('company_name','')}" for h in holdings]
-        to_del = st.multiselect("Select holding(s) to remove", opts_d, key="del_eq")
-        if to_del:
-            st.warning(f"This will permanently remove {len(to_del)} holding(s).")
-            if st.button("Confirm Delete", key="del_eq_btn"):
-                holdings = [h for i, h in enumerate(holdings) if opts_d[i] not in to_del]
-                save("equity_india.json", holdings)
-                st.success(f"✅ {len(to_del)} holding(s) removed.")
-                st.rerun()

@@ -96,6 +96,25 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
             )
             total_metrics(total_inv, total_cv)
 
+            st.divider()
+            chk_rows = [{"☑": False, "ISIN": h.get("isin",""), "Fund Name": h.get("fund_name","") or (navs.get(h.get("isin","").upper(), {}).get("amfi_name") or "—")} for h in holdings]
+            chk_edited = st.data_editor(
+                pd.DataFrame(chk_rows),
+                column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+                disabled=["ISIN", "Fund Name"],
+                hide_index=True, use_container_width=True, key=f"del_chk_mf_{owner}",
+            )
+            if st.button("🗑️ Delete Selected", key=f"del_mf_btn_{owner}"):
+                sel = chk_edited[chk_edited["☑"]].index.tolist()
+                if sel:
+                    for j in sorted(sel, reverse=True):
+                        holdings.pop(j)
+                    save(fname, holdings)
+                    st.success(f"✅ {len(sel)} fund(s) removed.")
+                    st.rerun()
+                else:
+                    st.warning("Select at least one row to delete.")
+
         else:
             st.info(f"No holdings for {owner} yet. Add below.")
 
@@ -196,14 +215,3 @@ for tab, (owner, fname) in zip(tabs, OWNERS):
                         st.success("✅ Details saved.")
                         st.rerun()
 
-            # ── Delete ────────────────────────────────────────────────────────
-            with st.expander(f"🗑️ Delete Fund — {owner}"):
-                opts_d = [f"{h.get('isin','—')} — {h.get('fund_name','—')}" for h in holdings]
-                to_del = st.multiselect("Select fund(s) to remove", opts_d, key=f"del_mf_{owner}")
-                if to_del:
-                    st.warning(f"This will permanently remove {len(to_del)} fund(s).")
-                    if st.button("Confirm Delete", key=f"del_mf_btn_{owner}"):
-                        holdings = [h for i, h in enumerate(holdings) if opts_d[i] not in to_del]
-                        save(fname, holdings)
-                        st.success(f"✅ {len(to_del)} fund(s) removed.")
-                        st.rerun()

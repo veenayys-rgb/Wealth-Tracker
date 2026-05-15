@@ -60,6 +60,26 @@ if items:
         use_container_width=True,
         hide_index=True,
     )
+
+    st.divider()
+    chk_rows = [{"☑": False, "Symbol": i["symbol"].upper(), "Company Name": i.get("company_name",""), "Region": i.get("region","")} for i in items]
+    chk_edited = st.data_editor(
+        pd.DataFrame(chk_rows),
+        column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+        disabled=["Symbol", "Company Name", "Region"],
+        hide_index=True, use_container_width=True, key="del_chk_wl",
+    )
+    if st.button("🗑️ Delete Selected", key="del_wl_btn"):
+        sel = chk_edited[chk_edited["☑"]].index.tolist()
+        if sel:
+            for j in sorted(sel, reverse=True):
+                items.pop(j)
+            save("watchlist.json", items)
+            st.success(f"✅ {len(sel)} item(s) removed.")
+            st.rerun()
+        else:
+            st.warning("Select at least one row to delete.")
+
 else:
     st.info("No items in watchlist yet. Add below.")
 
@@ -93,16 +113,3 @@ with st.expander("➕ Add to Watchlist"):
                 st.success(f"✅ {symbol.upper()} added to watchlist.")
                 st.rerun()
 
-# ── DELETE ────────────────────────────────────────────────────────────────────
-if items:
-    with st.expander("🗑️ Remove from Watchlist"):
-        options_d = [f"{i['symbol']} — {i.get('company_name','')} ({i.get('region','')})"
-                     for i in items]
-        sel_d = st.selectbox("Select item to remove", options_d, key="del_wl_sel")
-        idx_d = options_d.index(sel_d)
-        st.warning(f"This will permanently remove **{items[idx_d]['symbol']}** from the watchlist.")
-        if st.button("Confirm Remove", key="del_wl_btn"):
-            removed = items.pop(idx_d)
-            save("watchlist.json", items)
-            st.success(f"✅ {removed['symbol']} removed from watchlist.")
-            st.rerun()

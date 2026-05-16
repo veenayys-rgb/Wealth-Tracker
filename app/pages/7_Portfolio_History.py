@@ -64,8 +64,9 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
 def history_table(view_df, money_cols, date_label="Date"):
     """Render the raw history table with Indian number formatting."""
     display = view_df.copy()
+    display = display.sort_values("date", ascending=False)
     display["date"] = display["date"].dt.strftime("%d-%b-%Y")
-    display = display.rename(columns={"date": date_label}).sort_values(date_label, ascending=False)
+    display = display.rename(columns={"date": date_label})
 
     fmt = {c: (lambda v: ind_num(v) if v is not None else "—") for c in money_cols if c in display.columns}
     fmt["Return %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"

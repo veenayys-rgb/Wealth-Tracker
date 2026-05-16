@@ -52,12 +52,18 @@ def load(filename: str) -> list:
 def save(filename: str, data: list):
     table, owner = TABLE_MAP[filename]
     client = _write_client()
-    dq = client.table(table).delete()
+
+    # Capture old row IDs before touching anything
+    q = client.table(table).select("id")
     if owner:
-        dq = dq.eq("owner", owner)
-    else:
-        dq = dq.gte("id", 0)
-    dq.execute()
+        q = q.eq("owner", owner)
+    old_ids = [r["id"] for r in q.execute().data]
+
+    # Insert new rows first — if this raises, old rows are untouched
     if data:
         rows = [{**d, "owner": owner} for d in data] if owner else list(data)
         client.table(table).insert(rows).execute()
+
+    # Delete only the specific old rows now that insert succeeded
+    if old_ids:
+        client.table(table).delete().in_("id", old_ids).execute()

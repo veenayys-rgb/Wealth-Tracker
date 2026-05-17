@@ -9,7 +9,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, get_forex
 from utils.config import load
-from utils.fmt    import inr
+from utils.fmt    import inr, ind_num
 
 st.set_page_config(page_title="Portfolio | Wealth Tracker", page_icon="💼", layout="wide")
 st.title("💼 Portfolio")
@@ -111,9 +111,9 @@ def build_allocation(owner: str) -> pd.DataFrame:
 def show_table(owner: str):
     df  = build_allocation(owner)
     fmt = {
-        "Invested (₹)":  lambda v: f"₹ {v:,.2f}" if v is not None else "—",
-        "Current (₹)":   lambda v: f"₹ {v:,.2f}" if v is not None else "—",
-        "Gain/Loss (₹)": lambda v: f"₹ {v:,.2f}" if v is not None else "—",
+        "Invested (₹)":  lambda v: ind_num(v) if v is not None else "—",
+        "Current (₹)":   lambda v: ind_num(v) if v is not None else "—",
+        "Gain/Loss (₹)": lambda v: ind_num(v) if v is not None else "—",
         "Allocation %":  "{:.2f}%",
     }
     st.dataframe(

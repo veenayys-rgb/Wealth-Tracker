@@ -1,21 +1,21 @@
-"""Equity Recon Sandbox — HDFC Demat holding statement reconciliation.
-Run with: streamlit run tools/equity_recon.py
-"""
+"""Equity Recon — HDFC Demat holding statement reconciliation."""
 import sys, os, re, io, json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+from utils.sidebar import render_sidebar
 import pdfplumber
 import pandas as pd
-from utils.config import load
+from utils.config import load, save
 from utils.fmt import ind_num
 
-st.set_page_config(page_title="Equity Recon — Sandbox", page_icon="📋", layout="wide")
-st.title("📋 Equity Recon — HDFC Demat Sandbox")
-st.caption("Upload an HDFC Depository Holding Statement PDF. No data is written in sandbox mode.")
+st.set_page_config(page_title="Equity Recon | Wealth Tracker", page_icon="📋", layout="wide")
+st.title("📋 Equity Reconciliation — HDFC Demat")
+st.caption("Upload an HDFC Depository Holding Statement PDF to compare with stored holdings.")
+render_sidebar()
 
-# ── DP Account → NRE/NRO mapping (stored locally) ──────────────────────────────
-_MAP_FILE = os.path.join(os.path.dirname(__file__), "dp_account_map.json")
+# ── DP Account → NRE/NRO mapping (stored in app/) ─────────────────────────────
+_MAP_FILE = os.path.join(os.path.dirname(__file__), "..", "dp_account_map.json")
 
 def _load_map() -> dict:
     if os.path.exists(_MAP_FILE):
@@ -69,25 +69,14 @@ INVESTOR_RE = re.compile(r'^([A-Z][A-Z ]+)$', re.MULTILINE)
 ACCT_RE     = re.compile(r'DP Account No\s*[:\s]+(\d+)', re.IGNORECASE)
 
 
-def extract_holdings(file_bytes: bytes) -> tuple[str, str, list[dict], list[dict]]:
-    """Return (investor_name, dp_account_no, holdings, debug_info) from HDFC PDF bytes."""
-    raw_pages, investor, dp_account, debug = [], "", "", []
+def extract_holdings(file_bytes: bytes) -> tuple[str, str, list[dict]]:
+    """Return (investor_name, dp_account_no, holdings_list) from HDFC PDF bytes."""
+    raw_pages, investor, dp_account = [], "", ""
 
     with pdfplumber.open(file_bytes) as pdf:
-        total_pages = len(pdf.pages)
-        for i, page in enumerate(pdf.pages):
+        for page in pdf.pages:
             t = page.extract_text() or ""
             raw_pages.append(t)
-            lines_on_page = [l.strip() for l in t.splitlines() if l.strip()]
-            isin_lines    = [l for l in lines_on_page if re.match(r'^IN[A-Z0-9]{10}\s', l) or
-                             re.match(r'^Free Balance\s+IN[A-Z0-9]{10}', l)]
-            debug.append({
-                "Page":         f"{i+1} of {total_pages}",
-                "Total lines":  len(lines_on_page),
-                "ISIN rows":    len(isin_lines),
-                "Sample ISINs": ", ".join(re.findall(r'IN[A-Z0-9]{10}', " ".join(isin_lines))[:3]),
-            })
-            # Extract DP Account No from first page that has it
             if not dp_account:
                 m = ACCT_RE.search(t)
                 if m:
@@ -132,7 +121,7 @@ def extract_holdings(file_bytes: bytes) -> tuple[str, str, list[dict], list[dict
             "value": value,
         })
 
-    return investor, dp_account, records, debug
+    return investor, dp_account, records
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
@@ -146,13 +135,13 @@ if not uploaded:
 
 # ── Parse ──────────────────────────────────────────────────────────────────────
 try:
-    investor, dp_account, hdfc, debug = extract_holdings(io.BytesIO(uploaded.read()))
+    investor, dp_account, hdfc = extract_holdings(io.BytesIO(uploaded.read()))
 except Exception as e:
     st.error(f"Failed to parse PDF: {e}")
     st.stop()
 
 # ── Auto-detect NRE/NRO ────────────────────────────────────────────────────────
-auto_ht   = dp_map.get(dp_account, "")   # "" if not in map
+auto_ht    = dp_map.get(dp_account, "")
 ht_options = ["NRO", "NRE"]
 
 if auto_ht:
@@ -161,19 +150,11 @@ if auto_ht:
 else:
     default_idx = 0
     if dp_account:
-        c2.warning(f"DP Acct `{dp_account}` not in mapping — please select manually or update the config above.")
+        c2.warning(f"DP Acct `{dp_account}` not in mapping — please select manually or update config above.")
     else:
         c2.warning("DP Account No not found in PDF — please select manually.")
 
 holding_type = c2.selectbox("Holding Type", ht_options, index=default_idx)
-
-# ── Per-page debug table (always shown in sandbox) ─────────────────────────────
-st.subheader("📄 Page-by-page breakdown")
-st.caption("Use this to verify the last page is being parsed correctly.")
-st.dataframe(pd.DataFrame(debug), use_container_width=True, hide_index=True)
-
-if dp_account:
-    st.caption(f"🔑 DP Account No detected in PDF: **`{dp_account}`**")
 
 if not hdfc:
     st.error("No holdings found. Check the PDF format.")
@@ -189,14 +170,14 @@ stored         = load(fname_map[owner])
 stored_ht      = [h for h in stored if h.get("holding_type", "").upper() == holding_type.upper()]
 stored_by_isin = {h["isin"].upper(): h for h in stored_ht}
 
-# ── Build comparison ───────────────────────────────────────────────────────────
-# Load MF store to identify which INF ISINs are tracked there (direct MF route).
-# Exchange-traded ETFs also have INF ISINs but live in the equity tracker.
+# ── MF ISIN classification ─────────────────────────────────────────────────────
+# Rule: INF ISINs in the MF tracker → skip (reconcile via MF Recon)
+#       INF ISINs NOT in MF tracker  → include (exchange-traded ETF, priced via yfinance)
 mf_fname_map = {"Vinay": "mutual_funds_vinay.json",
                 "Harsh": "mutual_funds_harsh.json",
                 "Anusha": "mutual_funds_anusha.json"}
-mf_stored       = load(mf_fname_map[owner])
-mf_isins        = {h["isin"].upper() for h in mf_stored if h.get("isin")}
+mf_stored = load(mf_fname_map[owner])
+mf_isins  = {h["isin"].upper() for h in mf_stored if h.get("isin")}
 
 etf_skipped = [r for r in hdfc if r["isin"] in mf_isins]
 etf_equity  = [r for r in hdfc if r["scrip"] == "ETF/MF" and r["isin"] not in mf_isins]
@@ -215,6 +196,7 @@ if etf_equity:
         f"{names}"
     )
 
+# ── Build comparison ───────────────────────────────────────────────────────────
 rows = []
 for rec in hdfc:
     if rec["isin"] in mf_isins:
@@ -264,15 +246,14 @@ for h in stored_ht:
 df = pd.DataFrame(rows)
 
 # ── Summary ────────────────────────────────────────────────────────────────────
-st.divider()
 total_val = sum(r["value"] for r in hdfc if r["isin"] not in mf_isins)
 c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Holdings in HDFC",  len(hdfc))
-c2.metric("✅ Match",           sum(1 for r in rows if r["Status"] == "✅ Match"))
-c3.metric("⚠️ Qty differs",     sum(1 for r in rows if "differ" in r["Status"]))
-c4.metric("🆕 New",             sum(1 for r in rows if r["Status"] == "🆕 New"))
-c5.metric("❌ Missing in HDFC", sum(1 for r in rows if "Missing" in r["Status"]))
-c6.metric("HDFC Total Value",  ind_num(total_val))
+c1.metric("Holdings in HDFC",    len(hdfc))
+c2.metric("✅ Match",             sum(1 for r in rows if r["Status"] == "✅ Match"))
+c3.metric("⚠️ Qty differs",       sum(1 for r in rows if "differ" in r["Status"]))
+c4.metric("🆕 New",               sum(1 for r in rows if r["Status"] == "🆕 New"))
+c5.metric("❌ Missing in HDFC",   sum(1 for r in rows if "Missing" in r["Status"]))
+c6.metric("HDFC Total Value",    ind_num(total_val))
 
 st.divider()
 
@@ -307,6 +288,61 @@ st.dataframe(
 )
 
 st.divider()
+
+# ── Sync ───────────────────────────────────────────────────────────────────────
+to_update = [r for r in rows if "differ" in r["Status"]]
+to_add    = [r for r in rows if r["Status"] == "🆕 New"]
+missing   = [r for r in rows if "Missing" in r["Status"]]
+
+if missing:
+    names = ", ".join(f"{r['Description']} ({r['ISIN']})" for r in missing)
+    st.warning(f"⚠️ {len(missing)} holding(s) in tracker not found in HDFC statement — please review manually:\n\n{names}")
+
+st.info("ℹ️ HDFC statement provides current price only — avg cost will not be updated. "
+        "New stocks are added with avg cost = 0; please update via the India Equity page.")
+
+can_sync = len(to_update) + len(to_add) > 0
+if can_sync:
+    st.info(f"Ready to sync: **{len(to_update)}** holding(s) to update qty  |  **{len(to_add)}** new holding(s) to add")
+
+if st.button("🔄 Sync to Tracker", disabled=not can_sync, type="primary"):
+    hdfc_by_isin = {r["isin"]: r for r in hdfc}
+
+    # Update qty for differing holdings
+    updated = 0
+    for h in stored:
+        if h.get("holding_type", "").upper() != holding_type.upper():
+            continue
+        hrec = hdfc_by_isin.get(h["isin"].upper())
+        if hrec and abs(float(h["qty"]) - hrec["qty"]) > 0.001:
+            h["qty"] = hrec["qty"]
+            updated += 1
+
+    # Add new holdings
+    added, existing_isins = 0, {h["isin"].upper() for h in stored
+                                  if h.get("holding_type", "").upper() == holding_type.upper()}
+    for r in to_add:
+        if r["ISIN"] not in existing_isins:
+            stored.append({
+                "isin":         r["ISIN"],
+                "company_name": r["Description"],
+                "symbol":       "",        # fill in via India Equity page for price fetching
+                "holding_type": holding_type,
+                "source":       "Market",
+                "buy_date":     "",
+                "qty":          r["HDFC Qty"],
+                "avg_cost":     0.0,       # not available from HDFC statement
+            })
+            added += 1
+
+    save(fname_map[owner], stored)
+    st.success(f"✅ Sync complete — {updated} holding(s) qty updated, {added} new holding(s) added.")
+    if added:
+        st.info("📝 New holdings added with avg cost = 0 and blank symbol. "
+                "Please update them via the India Equity page.")
+    st.rerun()
+
+st.divider()
 st.subheader("Raw HDFC Extract")
 st.caption(f"Total rows extracted: {len(hdfc)}")
 raw_fmt = {
@@ -315,5 +351,3 @@ raw_fmt = {
     "value": lambda v: ind_num(v),
 }
 st.dataframe(pd.DataFrame(hdfc).style.format(raw_fmt), use_container_width=True, hide_index=True)
-
-st.info("🔒 Sandbox mode — no data is written to the tracker.")

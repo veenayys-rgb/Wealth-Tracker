@@ -98,25 +98,6 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
             )
             total_metrics(total_inv, total_cv)
 
-            st.divider()
-            chk_rows = [{"☑": False, "ISIN": h.get("isin",""), "Fund Name": h.get("fund_name","") or (navs.get(h.get("isin","").upper(), {}).get("amfi_name") or "—")} for h in holdings]
-            chk_edited = st.data_editor(
-                pd.DataFrame(chk_rows),
-                column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
-                disabled=["ISIN", "Fund Name"],
-                hide_index=True, use_container_width=True, key=f"del_chk_mf_{owner}",
-            )
-            if st.button("🗑️ Delete Selected", key=f"del_mf_btn_{owner}"):
-                sel = chk_edited[chk_edited["☑"]].index.tolist()
-                if sel:
-                    for j in sorted(sel, reverse=True):
-                        holdings.pop(j)
-                    save(fname, holdings)
-                    st.success(f"✅ {len(sel)} fund(s) removed.")
-                    st.rerun()
-                else:
-                    st.warning("Select at least one row to delete.")
-
         else:
             st.info(f"No holdings for {owner} yet. Add below.")
 
@@ -131,15 +112,16 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     amfi = (navs.get(isin, {}).get("amfi_name") or h.get("fund_name") or isin or "—")
                     nav_val = float(navs.get(isin, {}).get("nav", 0) or 0)
                     qe_rows.append({
+                        "☑":               False,
                         "Fund Name (AMFI)": amfi,
                         "Units Held":       float(h.get("units", 0)),
                         "Avg NAV (₹)":      float(h.get("avg_nav", 0)),
                         "Current NAV (₹)":  nav_val,
                     })
-                qe_df  = pd.DataFrame(qe_rows)
                 edited = st.data_editor(
-                    qe_df,
+                    pd.DataFrame(qe_rows),
                     column_config={
+                        "☑":               st.column_config.CheckboxColumn("☑", width="small"),
                         "Fund Name (AMFI)": st.column_config.TextColumn(disabled=True, width="large"),
                         "Units Held":       st.column_config.NumberColumn(format="%.3f", min_value=0.0),
                         "Avg NAV (₹)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
@@ -149,7 +131,8 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     use_container_width=True,
                     key=f"qe_{owner}",
                 )
-                if st.button("💾 Save Changes", key=f"qsave_{owner}"):
+                bc1, bc2 = st.columns(2)
+                if bc1.button("💾 Save Changes", key=f"qsave_{owner}"):
                     nav_rows = []
                     for i in range(len(holdings)):
                         holdings[i]["units"]     = float(edited.iloc[i]["Units Held"])
@@ -169,6 +152,16 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             st.warning(f"Holdings saved but NAV update failed: {e}")
                     st.success("✅ Changes saved.")
                     st.rerun()
+                if bc2.button("🗑️ Delete Selected", key=f"del_mf_btn_{owner}"):
+                    sel = edited[edited["☑"]].index.tolist()
+                    if sel:
+                        for j in sorted(sel, reverse=True):
+                            holdings.pop(j)
+                        save(fname, holdings)
+                        st.success(f"✅ {len(sel)} fund(s) removed.")
+                        st.rerun()
+                    else:
+                        st.warning("Tick at least one row to delete.")
 
         # ── Add ───────────────────────────────────────────────────────────────
         with st.expander(f"➕ Add Fund — {owner}"):

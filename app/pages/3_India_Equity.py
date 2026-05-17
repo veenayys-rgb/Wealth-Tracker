@@ -90,25 +90,6 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
             )
             total_metrics(total_inv, total_cv)
 
-            st.divider()
-            chk_rows = [{"☑": False, "Symbol": h["symbol"].upper(), "Company Name": h.get("company_name", "")} for h in holdings]
-            chk_edited = st.data_editor(
-                pd.DataFrame(chk_rows),
-                column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
-                disabled=["Symbol", "Company Name"],
-                hide_index=True, use_container_width=True, key=f"del_chk_eq_{owner}",
-            )
-            if st.button("🗑️ Delete Selected", key=f"del_eq_btn_{owner}"):
-                sel = chk_edited[chk_edited["☑"]].index.tolist()
-                if sel:
-                    for j in sorted(sel, reverse=True):
-                        holdings.pop(j)
-                    save(fname, holdings)
-                    st.success(f"✅ {len(sel)} holding(s) removed.")
-                    st.rerun()
-                else:
-                    st.warning("Select at least one row to delete.")
-
         else:
             st.info(f"No holdings for {owner} yet. Add below.")
 
@@ -121,6 +102,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 for h in holdings:
                     sym = h["symbol"].upper()
                     qe_rows.append({
+                        "☑":                 False,
                         "Symbol":            sym,
                         "Holding Type":      h.get("holding_type", "NRE"),
                         "Source":            h.get("source", "Market"),
@@ -132,6 +114,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 edited = st.data_editor(
                     pd.DataFrame(qe_rows),
                     column_config={
+                        "☑":                 st.column_config.CheckboxColumn("☑", width="small"),
                         "Symbol":            st.column_config.TextColumn(),
                         "Holding Type":      st.column_config.SelectboxColumn(options=["NRE", "NRO"]),
                         "Source":            st.column_config.SelectboxColumn(options=["Market", "IPO", "DAD"]),
@@ -142,7 +125,8 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     },
                     hide_index=True, use_container_width=True, key=f"qe_equity_{owner}",
                 )
-                if st.button("💾 Save Changes", key=f"qsave_equity_{owner}"):
+                bc1, bc2 = st.columns(2)
+                if bc1.button("💾 Save Changes", key=f"qsave_equity_{owner}"):
                     price_rows = []
                     for i in range(len(holdings)):
                         holdings[i]["symbol"]       = str(edited.iloc[i]["Symbol"]).upper()
@@ -166,6 +150,16 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             st.warning(f"Holdings saved but price update failed: {e}")
                     st.success("✅ Changes saved.")
                     st.rerun()
+                if bc2.button("🗑️ Delete Selected", key=f"del_eq_btn_{owner}"):
+                    sel = edited[edited["☑"]].index.tolist()
+                    if sel:
+                        for j in sorted(sel, reverse=True):
+                            holdings.pop(j)
+                        save(fname, holdings)
+                        st.success(f"✅ {len(sel)} holding(s) removed.")
+                        st.rerun()
+                    else:
+                        st.warning("Tick at least one row to delete.")
 
         # ── Add ───────────────────────────────────────────────────────────────
         with st.expander(f"➕ Add Holding — {owner}"):

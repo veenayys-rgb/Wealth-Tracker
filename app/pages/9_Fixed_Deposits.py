@@ -14,7 +14,8 @@ render_sidebar()
 
 forex = get_forex()
 aed   = forex.get("AED_INR", 0)
-st.caption(f"AED/INR: {aed:.4f}")
+usd   = forex.get("USD_INR", 0)
+st.caption(f"AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
 
 fds = load("fixed_deposits.json")
 
@@ -29,7 +30,9 @@ def _blank(v):
 
 
 def _inr_rate(curr):
-    return aed if curr == "AED" else 1.0
+    if curr == "AED": return aed
+    if curr == "USD": return usd
+    return 1.0
 
 
 owner_tabs = st.tabs(OWNER_LABELS)

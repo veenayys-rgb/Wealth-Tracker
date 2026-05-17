@@ -60,13 +60,18 @@ def build_allocation(owner: str) -> pd.DataFrame:
         if owner == "Combined" or b.get("owner") == owner:
             uae_cv += float(b.get("balance_aed", 0)) * aed
 
+    def _fx(curr):
+        if curr == "AED": return aed
+        if curr == "USD": return usd
+        return 1.0
+
     # FD
     fd_inv = fd_cv = 0.0
     for fd in load("fixed_deposits.json"):
         if owner == "Combined" or fd.get("owner") == owner:
             amt  = float(fd.get("amount", 0))
             curr = fd.get("currency", "INR")
-            fd_cv += amt * aed if curr == "AED" else amt
+            fd_cv += amt * _fx(curr)
 
     # Insurance (surrender value)
     ins_cv = 0.0
@@ -74,7 +79,7 @@ def build_allocation(owner: str) -> pd.DataFrame:
         if owner == "Combined" or p.get("owner") == owner:
             sv   = float(p.get("surrender_value", 0))
             curr = p.get("currency", "INR")
-            ins_cv += sv * aed if curr == "AED" else sv
+            ins_cv += sv * _fx(curr)
 
     total_inv = eq_inv + mf_inv + bank_inv + uae_inv + fd_inv
     total_cv  = eq_cv  + mf_cv  + bank_cv  + uae_cv  + fd_cv + ins_cv

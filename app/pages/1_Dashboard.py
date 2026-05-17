@@ -66,12 +66,18 @@ def bank_total_inr() -> float:
     return round(total, 2)
 
 
+def _fx(curr):
+    if curr == "AED": return aed
+    if curr == "USD": return usd
+    return 1.0
+
+
 def fd_total_inr() -> float:
     total = 0.0
     for fd in load("fixed_deposits.json"):
         amt  = float(fd.get("amount", 0))
         curr = fd.get("currency", "INR")
-        total += amt * aed if curr == "AED" else amt
+        total += amt * _fx(curr)
     return round(total, 2)
 
 
@@ -80,7 +86,7 @@ def insurance_surrender_inr() -> float:
     for p in load("insurance.json"):
         sv   = float(p.get("surrender_value", 0))
         curr = p.get("currency", "INR")
-        total += sv * aed if curr == "AED" else sv
+        total += sv * _fx(curr)
     return round(total, 2)
 
 

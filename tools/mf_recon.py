@@ -250,6 +250,56 @@ st.dataframe(
 )
 
 st.divider()
+
+# ── Sync button ───────────────────────────────────────────────────────────────
+to_update = [r for r in rows if "differ" in r["Status"]]
+to_add    = [r for r in rows if r["Status"] == "🆕 New"]
+missing   = [r for r in rows if "Missing" in r["Status"]]
+
+# Warning for missing funds (shown always, not just on sync)
+if missing:
+    names = ", ".join(r["Unique Key"] for r in missing)
+    st.warning(f"⚠️ {len(missing)} fund(s) in tracker not found in CAMS — please review manually: {names}")
+
+can_sync = len(to_update) + len(to_add) > 0
+if can_sync:
+    st.info(f"Ready to sync: **{len(to_update)}** fund(s) to update  |  **{len(to_add)}** new fund(s) to add")
+
+if st.button("🔄 Sync to Tracker", disabled=not can_sync, type="primary"):
+    # Build a lookup of CAMS records by unique key for quick access
+    cams_by_key = {f"{r['folio']}_{r['isin']}": r for r in cams}
+
+    # Update existing holdings that differ
+    updated = 0
+    for h in stored:
+        key  = h.get("folio_no", "")
+        crec = cams_by_key.get(key)
+        if crec and abs(float(h["units"]) - crec["units"]) > 0.001:
+            h["units"]   = crec["units"]
+            h["avg_nav"] = crec["avg_nav"]
+            updated += 1
+
+    # Add new funds
+    added = 0
+    existing_keys = {h.get("folio_no", "") for h in stored}
+    for r in to_add:
+        key = f"{r['Unique Key']}"  # already folio_isin format
+        if key not in existing_keys:
+            stored.append({
+                "folio_no":  key,
+                "isin":      r["ISIN"],
+                "fund_name": r["CAMS Scheme"],
+                "units":     r["CAMS Units"],
+                "avg_nav":   r["CAMS Avg NAV"],
+            })
+            added += 1
+
+    from utils.config import save
+    save(fname_map[owner], stored)
+    st.success(f"✅ Sync complete — {updated} fund(s) updated, {added} new fund(s) added.")
+    st.rerun()
+
+st.divider()
 st.subheader("Raw CAMS Extract")
 raw_df  = pd.DataFrame(cams)
 raw_fmt = {

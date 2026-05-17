@@ -136,21 +136,22 @@ st.success(f"Parsed **{len(cams)} funds** for **{investor or owner}**.")
 fname_map = {"Vinay": "mutual_funds_vinay.json",
              "Harsh": "mutual_funds_harsh.json",
              "Anusha": "mutual_funds_anusha.json"}
-stored         = load(fname_map[owner])
-stored_by_isin = {h["isin"].upper(): h for h in stored}
+stored = load(fname_map[owner])
+# Match key = folio_isin (same format mf_extractor.py uses: "486930/30_INF579M01AF8")
+stored_by_key = {h["folio_no"]: h for h in stored if h.get("folio_no")}
 
 # ── Build comparison ──────────────────────────────────────────────────────────
 rows = []
 for rec in cams:
-    isin = rec["isin"]
-    s    = stored_by_isin.get(isin)
+    cams_key = f"{rec['folio']}_{rec['isin']}"
+    s        = stored_by_key.get(cams_key)
 
     s_units  = float(s["units"])   if s else None
     s_avgnav = float(s["avg_nav"]) if s else None
     s_cost   = round(s_units * s_avgnav, 2) if s else None
 
-    unit_diff = round(rec["units"] - s_units, 4)  if s_units is not None else None
-    cost_diff = round(rec["cost"]  - s_cost,  2)  if s_cost  is not None else None
+    unit_diff = round(rec["units"]   - s_units,  4) if s_units  is not None else None
+    cost_diff = round(rec["cost"]    - s_cost,   2) if s_cost   is not None else None
     nav_diff  = round(rec["avg_nav"] - s_avgnav, 4) if s_avgnav is not None else None
 
     if s is None:
@@ -164,7 +165,8 @@ for rec in cams:
 
     rows.append({
         "Status":          status,
-        "ISIN":            isin,
+        "Unique Key":      cams_key,
+        "ISIN":            rec["isin"],
         "CAMS Scheme":     rec["scheme_name"],
         "CAMS Units":      rec["units"],
         "Stored Units":    s_units,
@@ -175,15 +177,16 @@ for rec in cams:
         "CAMS Cost (₹)":   rec["cost"],
         "Stored Cost (₹)": s_cost,
         "Cost Diff (₹)":   cost_diff,
-        "Folio":           rec["folio"],
         "Registrar":       rec["registrar"],
     })
 
 # Flag stored funds absent from CAMS
+cams_keys = {f"{r['folio']}_{r['isin']}" for r in cams}
 for h in stored:
-    if h["isin"].upper() not in {r["isin"] for r in cams}:
+    if h.get("folio_no") not in cams_keys:
         rows.append({
             "Status":          "❌ Missing in CAMS",
+            "Unique Key":      h.get("folio_no", ""),
             "ISIN":            h["isin"].upper(),
             "CAMS Scheme":     "—",
             "CAMS Units":      None,
@@ -195,7 +198,6 @@ for h in stored:
             "CAMS Cost (₹)":   None,
             "Stored Cost (₹)": round(float(h["units"]) * float(h["avg_nav"]), 2),
             "Cost Diff (₹)":   None,
-            "Folio":           h.get("folio_no", ""),
             "Registrar":       "—",
         })
 

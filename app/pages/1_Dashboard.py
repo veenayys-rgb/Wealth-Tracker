@@ -118,15 +118,16 @@ st.divider()
 # ── Asset breakdown table ─────────────────────────────────────────────────────
 st.subheader("Net Worth Breakdown")
 
+mf_inv = mf_v_inv + mf_h_inv + mf_a_inv
+mf_cv  = mf_v_cv  + mf_h_cv  + mf_a_cv
+
 asset_rows = [
-    ("India Equity",   eq_inv,   eq_cv),
-    ("MF — Vinay",     mf_v_inv, mf_v_cv),
-    ("MF — Harsh",     mf_h_inv, mf_h_cv),
-    ("MF — Anusha",    mf_a_inv, mf_a_cv),
-    ("International",  intl_inv, intl_cv),
-    ("Bank Accounts",  0,        bank_cv),
-    ("Fixed Deposits", 0,        fd_cv),
-    ("Insurance",      0,        ins_cv),
+    ("India Equity",        eq_inv,   eq_cv),
+    ("Mutual Funds",        mf_inv,   mf_cv),
+    ("International Equity", intl_inv, intl_cv),
+    ("Bank Accounts",       0,        bank_cv),
+    ("Fixed Deposits",      0,        fd_cv),
+    ("Insurance",           0,        ins_cv),
 ]
 
 data = []

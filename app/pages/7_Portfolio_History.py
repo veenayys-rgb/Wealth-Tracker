@@ -62,47 +62,48 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
 
 
 def history_table(view_df, money_cols, date_label="Date"):
-    """Render the raw history table with Indian number formatting."""
-    display = view_df.copy()
-    display = display.sort_values("date", ascending=False)
-    display["date"] = display["date"].dt.strftime("%d-%b-%Y")
-    display = display.rename(columns={"date": date_label})
+    """Render the raw history table inside a collapsible expander."""
+    with st.expander("📋 Raw Data", expanded=False):
+        display = view_df.copy()
+        display = display.sort_values("date", ascending=False)
+        display["date"] = display["date"].dt.strftime("%d-%b-%Y")
+        display = display.rename(columns={"date": date_label})
 
-    fmt = {c: (lambda v: ind_num(v) if v is not None else "—") for c in money_cols if c in display.columns}
-    fmt["Return %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
+        fmt = {c: (lambda v: ind_num(v) if v is not None else "—") for c in money_cols if c in display.columns}
+        fmt["Return %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
 
-    st.dataframe(
-        display.style
-               .format(fmt)
-               .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
-                              "color:red"   if isinstance(v, float) and v <  0 else "",
-                    subset=[c for c in ["Gain/Loss", "Return %"] if c in display.columns]),
-        use_container_width=True,
-        hide_index=True,
-    )
+        st.dataframe(
+            display.style
+                   .format(fmt)
+                   .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                                  "color:red"   if isinstance(v, float) and v <  0 else "",
+                        subset=[c for c in ["Gain/Loss", "Return %"] if c in display.columns]),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def delete_widget(source_df, tab_key):
-    """Checkbox + delete button for any history tab."""
-    st.divider()
-    chk_rows = [{"☑": False, "Date": d.strftime("%d-%b-%Y"),
-                 "Total Invested": ind_num(i), "Total CV": ind_num(c)}
-                for d, i, c in zip(source_df["date"], source_df["total_invested"], source_df["total_cv"])]
-    chk_edited = st.data_editor(
-        pd.DataFrame(chk_rows),
-        column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
-        disabled=["Date", "Total Invested", "Total CV"],
-        hide_index=True, use_container_width=True, key=f"del_chk_{tab_key}",
-    )
-    if st.button("🗑️ Delete Selected", key=f"del_btn_{tab_key}"):
-        sel = chk_edited[chk_edited["☑"]].index.tolist()
-        if sel:
-            dates_to_del = [source_df["date"].iloc[i].strftime("%Y-%m-%d") for i in sel]
-            service_delete("portfolio_history", "date", dates_to_del)
-            st.success(f"✅ {len(sel)} record(s) deleted.")
-            st.rerun()
-        else:
-            st.warning("Select at least one row to delete.")
+    """Checkbox + delete button inside a collapsible expander."""
+    with st.expander("🗑️ Delete Records", expanded=False):
+        chk_rows = [{"☑": False, "Date": d.strftime("%d-%b-%Y"),
+                     "Total Invested": ind_num(i), "Total CV": ind_num(c)}
+                    for d, i, c in zip(source_df["date"], source_df["total_invested"], source_df["total_cv"])]
+        chk_edited = st.data_editor(
+            pd.DataFrame(chk_rows),
+            column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+            disabled=["Date", "Total Invested", "Total CV"],
+            hide_index=True, use_container_width=True, key=f"del_chk_{tab_key}",
+        )
+        if st.button("🗑️ Delete Selected", key=f"del_btn_{tab_key}"):
+            sel = chk_edited[chk_edited["☑"]].index.tolist()
+            if sel:
+                dates_to_del = [source_df["date"].iloc[i].strftime("%Y-%m-%d") for i in sel]
+                service_delete("portfolio_history", "date", dates_to_del)
+                st.success(f"✅ {len(sel)} record(s) deleted.")
+                st.rerun()
+            else:
+                st.warning("Select at least one row to delete.")
 
 
 # ── All ───────────────────────────────────────────────────────────────────────
@@ -127,7 +128,6 @@ with tab_all:
         "return_pct":     "Return %",
     })
     chart_and_table(view, "total_invested", "total_cv")
-    st.divider()
     money_cols = [c for c in view.columns if c not in ("date", "Return %", "total_invested", "total_cv")]
     money_cols += ["Gain/Loss"]
     final = view.drop(columns=["total_invested", "total_cv"]).copy()
@@ -144,7 +144,6 @@ with tab_vinay:
     view["vinay_cv"]       = view["shares_cv"]       + view["mf_cv_vinay"]
     view["gain_loss"]      = view["vinay_cv"] - view["vinay_invested"]
     chart_and_table(view, "vinay_invested", "vinay_cv")
-    st.divider()
     disp = view[["date", "shares_invested", "shares_cv", "mf_inv_vinay", "mf_cv_vinay", "vinay_invested", "vinay_cv", "gain_loss"]].rename(columns={
         "shares_invested": "Equity Invested",
         "shares_cv":       "Equity CV",
@@ -163,7 +162,6 @@ with tab_harsh:
     view = df[["date", "mf_inv_harsh", "mf_cv_harsh"]].copy()
     view["gain_loss"] = view["mf_cv_harsh"] - view["mf_inv_harsh"]
     chart_and_table(view, "mf_inv_harsh", "mf_cv_harsh")
-    st.divider()
     disp = view.rename(columns={
         "mf_inv_harsh": "MF Invested",
         "mf_cv_harsh":  "MF Current Value",
@@ -180,7 +178,6 @@ with tab_anusha:
     has_data = view["mf_inv_anusha"].sum() > 0
     if has_data:
         chart_and_table(view, "mf_inv_anusha", "mf_cv_anusha")
-        st.divider()
         disp = view.rename(columns={
             "mf_inv_anusha": "MF Invested",
             "mf_cv_anusha":  "MF Current Value",

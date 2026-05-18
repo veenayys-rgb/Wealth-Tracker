@@ -2,12 +2,13 @@ name: Daily Portfolio Fetch
 
 on:
   schedule:
-    - cron: '30 10 * * 1-5'   # 4:00 PM IST (10:30 UTC), Mon–Fri
-  workflow_dispatch:            # allow manual trigger from GitHub Actions UI
+    - cron: "35 10 * * 1-5"   # 4:05 PM IST (10:35 UTC) Mon-Fri
+  workflow_dispatch:            # allow manual run from GitHub Actions tab
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repo
@@ -16,13 +17,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: fetcher/requirements.txt
 
       - name: Install dependencies
         run: pip install -r fetcher/requirements.txt
 
       - name: Run fetcher
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python fetcher/run.py

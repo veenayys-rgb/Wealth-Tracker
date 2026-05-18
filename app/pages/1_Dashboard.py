@@ -61,8 +61,11 @@ def intl_totals() -> tuple:
 
 
 def bank_total_inr() -> float:
-    total  = sum(float(b.get("balance", 0)) for b in load("bank_india.json"))
-    total += sum(float(b.get("balance_aed", 0)) * aed for b in load("bank_uae.json"))
+    total = sum(float(b.get("balance", 0)) for b in load("bank_india.json"))
+    for b in load("bank_uae.json"):
+        curr = b.get("currency", "AED")
+        rate = usd if curr == "USD" else aed
+        total += float(b.get("balance_aed", 0)) * rate
     return round(total, 2)
 
 

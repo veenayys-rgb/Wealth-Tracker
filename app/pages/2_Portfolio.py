@@ -58,7 +58,9 @@ def build_allocation(owner: str) -> pd.DataFrame:
     uae_inv = uae_cv = 0.0
     for b in load("bank_uae.json"):
         if owner == "Combined" or b.get("owner") == owner:
-            uae_cv += float(b.get("balance_aed", 0)) * aed
+            curr = b.get("currency", "AED")
+            rate = usd if curr == "USD" else aed
+            uae_cv += float(b.get("balance_aed", 0)) * rate
 
     def _fx(curr):
         if curr == "AED": return aed

@@ -14,7 +14,14 @@ render_sidebar()
 
 forex = get_forex()
 aed   = forex.get("AED_INR", 0)
-st.caption(f"AED/INR: {aed:.4f}  (used for UAE balance conversion)")
+usd   = forex.get("USD_INR", 0)
+st.caption(f"AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
+
+
+def _fx_uae(curr):
+    if curr == "AED": return aed
+    if curr == "USD": return usd
+    return 1.0
 
 tab_india, tab_uae = st.tabs(["🇮🇳 India", "🇦🇪 UAE"])
 
@@ -192,20 +199,20 @@ with tab_uae:
             subset = [b for _, b in idxmap]
 
             if subset:
-                rows, total_aed, total_inr = [], 0.0, 0.0
+                rows, total_inr = [], 0.0
                 for b in subset:
-                    bal_aed = float(b.get("balance_aed", 0))
-                    equiv   = round(bal_aed * aed, 2)
-                    total_aed += bal_aed
+                    bal     = float(b.get("balance_aed", 0))
+                    curr    = b.get("currency", "AED")
+                    equiv   = round(bal * _fx_uae(curr), 2)
                     total_inr += equiv
                     rows.append({
                         "☑":             False,
                         "Bank Name":     _blank(b.get("bank_name")),
-                        "Currency":      _blank(b.get("currency")),
+                        "Currency":      _blank(curr),
                         "Account Type":  _blank(b.get("account_type")),
                         "Account No.":   _blank(b.get("account_no")),
                         "Owner":         _blank(b.get("owner")),
-                        "Balance (AED)": f"{bal_aed:,.2f}",
+                        "Balance (FCY)": f"{bal:,.2f}",
                         "Equiv. INR":    f"₹ {equiv:,.2f}",
                     })
                 df = pd.DataFrame(rows)
@@ -216,7 +223,7 @@ with tab_uae:
                     hide_index=True, use_container_width=True,
                     key=f"de_uae_{oi}",
                 )
-                st.caption(f"**Total: AED {total_aed:,.2f}  ≈  ₹ {total_inr:,.2f}**")
+                st.caption(f"**Total Equiv. INR: ₹ {total_inr:,.2f}**")
 
                 if st.button("🗑️ Delete Selected", key=f"del_uae_{oi}"):
                     sel = edited[edited["☑"]].index.tolist()
@@ -233,14 +240,14 @@ with tab_uae:
                     qe_rows = [{"Bank": b.get("bank_name",""),
                                 "Account No.": b.get("account_no", ""),
                                 "Currency": b.get("currency", "AED"),
-                                "Balance (AED)": float(b.get("balance_aed", 0))} for b in subset]
+                                "Balance (FCY)": float(b.get("balance_aed", 0))} for b in subset]
                     qe_ed = st.data_editor(
                         pd.DataFrame(qe_rows),
                         column_config={
                             "Bank":          st.column_config.TextColumn(disabled=True),
                             "Account No.":   st.column_config.TextColumn(),
                             "Currency":      st.column_config.SelectboxColumn(options=["AED", "USD", "EUR", "GBP", "Other"]),
-                            "Balance (AED)": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                            "Balance (FCY)": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
                         },
                         hide_index=True, use_container_width=True, key=f"qe_uae_{oi}",
                     )
@@ -248,7 +255,7 @@ with tab_uae:
                         for j, (fi, _) in enumerate(idxmap):
                             uae[fi]["account_no"]  = str(qe_ed.iloc[j]["Account No."])
                             uae[fi]["currency"]    = str(qe_ed.iloc[j]["Currency"])
-                            uae[fi]["balance_aed"] = float(qe_ed.iloc[j]["Balance (AED)"])
+                            uae[fi]["balance_aed"] = float(qe_ed.iloc[j]["Balance (FCY)"])
                         save("bank_uae.json", uae)
                         st.success("✅ Balances saved.")
                         st.rerun()
@@ -272,7 +279,7 @@ with tab_uae:
                         owner = owner_filter
                     else:
                         owner = c5.selectbox("Owner", OWNERS)
-                    balance_aed  = c6.number_input("Balance (AED)", min_value=0.0, step=100.0, format="%.2f")
+                    balance_aed  = c6.number_input("Balance (FCY)", min_value=0.0, step=100.0, format="%.2f")
                     if st.form_submit_button("Add Account"):
                         if not bank_name.strip():
                             st.error("Bank Name is required.")

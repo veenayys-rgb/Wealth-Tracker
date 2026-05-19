@@ -191,7 +191,23 @@ with tab_anusha:
 
 # ── Mom ───────────────────────────────────────────────────────────────────────
 with tab_mom:
-    mom_rows = fetch("portfolio_history_mom")
+    try:
+        mom_rows = fetch("portfolio_history_mom")
+    except Exception:
+        st.warning("⚠️ Table `portfolio_history_mom` not found in Supabase. Please create it — see SQL below.")
+        st.code("""create table portfolio_history_mom (
+  id             bigserial primary key,
+  date           text unique not null,
+  eq_invested    numeric default 0,
+  eq_cv          numeric default 0,
+  mf_invested    numeric default 0,
+  mf_cv          numeric default 0,
+  total_invested numeric default 0,
+  total_cv       numeric default 0,
+  gain_loss      numeric default 0,
+  return_pct     numeric default 0
+);""", language="sql")
+        st.stop()
     if not mom_rows:
         st.info("No history for Mom yet — will appear after the daily fetcher runs with her holdings.")
     else:

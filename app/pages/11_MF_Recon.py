@@ -90,7 +90,7 @@ def extract_holdings(file_bytes: bytes, password: str) -> tuple[str, list[dict]]
 
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
-owner = st.selectbox("Owner", ["Vinay", "Harsh", "Anusha"])
+owner = st.selectbox("Owner", ["Vinay", "Harsh", "Anusha", "Mom"])
 c1, c2 = st.columns(2)
 uploaded = c1.file_uploader("CAMS PDF", type="pdf")
 password = c2.text_input("PDF Password", type="password")
@@ -116,9 +116,10 @@ if not cams:
 st.success(f"Parsed **{len(cams)} funds** for **{investor or owner}**.")
 
 # ── Load stored data ───────────────────────────────────────────────────────────
-fname_map     = {"Vinay": "mutual_funds_vinay.json",
-                 "Harsh": "mutual_funds_harsh.json",
-                 "Anusha": "mutual_funds_anusha.json"}
+fname_map     = {"Vinay":  "mutual_funds_vinay.json",
+                 "Harsh":  "mutual_funds_harsh.json",
+                 "Anusha": "mutual_funds_anusha.json",
+                 "Mom":    "mom_mutual_funds.json"}
 stored        = load(fname_map[owner])
 stored_by_key = {h["folio_no"]: h for h in stored if h.get("folio_no")}
 

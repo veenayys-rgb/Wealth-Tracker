@@ -25,10 +25,10 @@ def _fx_uae(curr):
 
 tab_india, tab_uae = st.tabs(["🇮🇳 India", "🇦🇪 UAE"])
 
-OWNERS         = ["Vinay", "Harsh", "Anusha"]
+OWNERS         = ["Vinay", "Harsh", "Anusha", "Mom"]
 ACCT_TYPES_IN  = ["Savings", "Current", "NRE", "NRO"]
 ACCT_TYPES_UAE = ["Savings", "Current", "Fixed", "Other"]
-OWNER_LABELS   = ["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All"]
+OWNER_LABELS   = ["👤 Vinay", "👤 Harsh", "👤 Anusha", "👩 Mom", "🏠 All"]
 OWNER_FILTERS  = OWNERS + [None]
 
 

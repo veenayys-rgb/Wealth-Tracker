@@ -126,7 +126,7 @@ def extract_holdings(file_bytes: bytes) -> tuple[str, str, list[dict]]:
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
 c1, c2, c3 = st.columns(3)
-owner    = c1.selectbox("Owner", ["Vinay", "Harsh", "Anusha"])
+owner    = c1.selectbox("Owner", ["Vinay", "Harsh", "Anusha", "Mom"])
 uploaded = c3.file_uploader("HDFC PDF", type=["pdf", "PDF"])
 
 if not uploaded:
@@ -163,9 +163,10 @@ if not hdfc:
 st.success(f"Parsed **{len(hdfc)} holdings** for **{investor or owner}** ({holding_type}).")
 
 # ── Load stored data ───────────────────────────────────────────────────────────
-fname_map = {"Vinay": "equity_india_vinay.json",
-             "Harsh": "equity_india_harsh.json",
-             "Anusha": "equity_india_anusha.json"}
+fname_map = {"Vinay":  "equity_india_vinay.json",
+             "Harsh":  "equity_india_harsh.json",
+             "Anusha": "equity_india_anusha.json",
+             "Mom":    "mom_equity_india.json"}
 stored         = load(fname_map[owner])
 stored_ht      = [h for h in stored if h.get("holding_type", "").upper() == holding_type.upper()]
 stored_by_isin = {h["isin"].upper(): h for h in stored_ht}
@@ -173,9 +174,10 @@ stored_by_isin = {h["isin"].upper(): h for h in stored_ht}
 # ── MF ISIN classification ─────────────────────────────────────────────────────
 # Rule: INF ISINs in the MF tracker → skip (reconcile via MF Recon)
 #       INF ISINs NOT in MF tracker  → include (exchange-traded ETF, priced via yfinance)
-mf_fname_map = {"Vinay": "mutual_funds_vinay.json",
-                "Harsh": "mutual_funds_harsh.json",
-                "Anusha": "mutual_funds_anusha.json"}
+mf_fname_map = {"Vinay":  "mutual_funds_vinay.json",
+                "Harsh":  "mutual_funds_harsh.json",
+                "Anusha": "mutual_funds_anusha.json",
+                "Mom":    "mom_mutual_funds.json"}
 mf_stored = load(mf_fname_map[owner])
 mf_isins  = {h["isin"].upper() for h in mf_stored if h.get("isin")}
 

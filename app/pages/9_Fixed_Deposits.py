@@ -19,9 +19,9 @@ st.caption(f"AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
 
 fds = load("fixed_deposits.json")
 
-OWNERS       = ["Vinay", "Harsh", "Anusha"]
+OWNERS       = ["Vinay", "Harsh", "Anusha", "Mom"]
 CURRENCIES   = ["INR", "AED", "USD", "GBP", "EUR", "Other"]
-OWNER_LABELS = ["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All"]
+OWNER_LABELS = ["👤 Vinay", "👤 Harsh", "👤 Anusha", "👩 Mom", "🏠 All"]
 OWNER_FILTERS = OWNERS + [None]
 
 

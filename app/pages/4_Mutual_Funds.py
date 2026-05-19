@@ -23,6 +23,7 @@ OWNERS = [
     ("Vinay",  "mutual_funds_vinay.json"),
     ("Harsh",  "mutual_funds_harsh.json"),
     ("Anusha", "mutual_funds_anusha.json"),
+    ("Mom",    "mom_mutual_funds.json"),
 ]
 
 all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])

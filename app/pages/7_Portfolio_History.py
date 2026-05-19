@@ -23,7 +23,7 @@ df["date"] = pd.to_datetime(df["date"])
 df = df.sort_values("date").reset_index(drop=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_vinay, tab_harsh, tab_anusha, tab_all = st.tabs(["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All"])
+tab_vinay, tab_harsh, tab_anusha, tab_all, tab_mom = st.tabs(["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All", "👩 Mom"])
 
 
 def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
@@ -83,7 +83,7 @@ def history_table(view_df, money_cols, date_label="Date"):
         )
 
 
-def delete_widget(source_df, tab_key):
+def delete_widget(source_df, tab_key, table="portfolio_history"):
     """Checkbox + delete button inside a collapsible expander."""
     with st.expander("🗑️ Delete Records", expanded=False):
         chk_rows = [{"☑": False, "Date": d.strftime("%d-%b-%Y"),
@@ -99,7 +99,7 @@ def delete_widget(source_df, tab_key):
             sel = chk_edited[chk_edited["☑"]].index.tolist()
             if sel:
                 dates_to_del = [source_df["date"].iloc[i].strftime("%Y-%m-%d") for i in sel]
-                service_delete("portfolio_history", "date", dates_to_del)
+                service_delete(table, "date", dates_to_del)
                 st.success(f"✅ {len(sel)} record(s) deleted.")
                 st.rerun()
             else:
@@ -187,3 +187,31 @@ with tab_anusha:
         delete_widget(df, "anusha")
     else:
         st.info("No MF history for Anusha yet — will appear once the daily fetcher runs with her holdings.")
+
+
+# ── Mom ───────────────────────────────────────────────────────────────────────
+with tab_mom:
+    mom_rows = fetch("portfolio_history_mom")
+    if not mom_rows:
+        st.info("No history for Mom yet — will appear after the daily fetcher runs with her holdings.")
+    else:
+        mdf = pd.DataFrame(mom_rows)
+        mdf["date"] = pd.to_datetime(mdf["date"])
+        mdf = mdf.sort_values("date").reset_index(drop=True)
+
+        view = mdf[["date", "eq_invested", "eq_cv", "mf_invested", "mf_cv",
+                    "total_invested", "total_cv"]].copy()
+        view["gain_loss"] = view["total_cv"] - view["total_invested"]
+        chart_and_table(view, "total_invested", "total_cv")
+        disp = view.rename(columns={
+            "eq_invested":    "Equity Invested",
+            "eq_cv":          "Equity CV",
+            "mf_invested":    "MF Invested",
+            "mf_cv":          "MF CV",
+            "total_invested": "Total Invested",
+            "total_cv":       "Total CV",
+            "gain_loss":      "Gain/Loss",
+        })
+        history_table(disp, ["Equity Invested", "Equity CV", "MF Invested", "MF CV",
+                              "Total Invested", "Total CV", "Gain/Loss"])
+        delete_widget(mdf, "mom", table="portfolio_history_mom")

@@ -1,6 +1,5 @@
 """
 Wealth Tracker — Streamlit App Entry Point
-Redirects to Dashboard (main page).
 """
 import streamlit as st
 
@@ -11,4 +10,5 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.switch_page("pages/1_Dashboard.py")
+st.title("💰 Wealth Tracker")
+st.markdown("Use the **sidebar** to navigate to any section.")

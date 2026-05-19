@@ -26,37 +26,37 @@ if items:
         high = data.get("high_52w", 0)      or 0
         low  = data.get("low_52w", 0)       or 0
         last = data.get("last_close", 0)    or 0
-        pct_from_high = ((curr - high) / high * 100) if high > 0 else 0
-        pct_from_low  = ((curr - low)  / low  * 100) if low  > 0 else 0
+        chg     = curr - last
+        chg_pct = (chg / last * 100) if last > 0 else 0
         rows.append({
-            "ISIN Number":     item.get("isin", ""),
-            "Symbol":          sym,
-            "Company Name":    item.get("company_name", ""),
-            "Region":          item.get("region", ""),
-            "Currency":        item.get("currency", ""),
-            "Last Close":      last,
-            "Current Price":   curr,
-            "52W High":        high,
-            "52W Low":         low,
-            "% from 52W High": pct_from_high,
-            "% from 52W Low":  pct_from_low,
+            "ISIN Number":   item.get("isin", ""),
+            "Symbol":        sym,
+            "Company Name":  item.get("company_name", ""),
+            "Region":        item.get("region", ""),
+            "Currency":      item.get("currency", ""),
+            "Last Close":    last,
+            "Current Price": curr,
+            "Change":        chg,
+            "Change %":      chg_pct,
+            "52W High":      high,
+            "52W Low":       low,
         })
 
     df = pd.DataFrame(rows)
     fmt = {
-        "Last Close":      "{:,.4f}",
-        "Current Price":   "{:,.4f}",
-        "52W High":        "{:,.4f}",
-        "52W Low":         "{:,.4f}",
-        "% from 52W High": "{:+.2f}%",
-        "% from 52W Low":  "{:+.2f}%",
+        "Last Close":    "{:,.4f}",
+        "Current Price": "{:,.4f}",
+        "Change":        lambda v: f"{v:+,.4f}",
+        "Change %":      lambda v: f"{v:+.2f}%",
+        "52W High":      "{:,.4f}",
+        "52W Low":       "{:,.4f}",
     }
     st.dataframe(
         df.style
           .format(fmt)
-          .map(lambda v: "color:red"   if isinstance(v, float) and v < 0 else
-                              "color:green" if isinstance(v, float) and v > 0 else "",
-                    subset=["% from 52W High", "% from 52W Low"]),
+          .map(lambda v: "color:green" if isinstance(v, float) and v > 0 else
+                         "color:red"   if isinstance(v, float) and v < 0 else "",
+                    subset=["Change", "Change %"]),
         use_container_width=True,
         hide_index=True,
     )

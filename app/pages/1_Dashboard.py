@@ -21,10 +21,14 @@ st.caption(f"AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
 
 
 # ── Compute all asset values ──────────────────────────────────────────────────
+_FAMILY = {"Vinay", "Harsh", "Anusha"}
+
 def eq_india_totals() -> tuple:
     prices = {r["symbol"]: float(r["price"]) for r in fetch("equity_india_prices")}
     inv = cv = 0.0
     for h in load("equity_india.json"):
+        if h.get("owner") and h["owner"] not in _FAMILY:
+            continue
         qty   = float(h.get("qty", 0))
         cost  = float(h.get("avg_cost", 0))
         price = prices.get(h["symbol"].upper(), 0)
@@ -61,7 +65,8 @@ def intl_totals() -> tuple:
 
 
 def bank_total_inr() -> float:
-    total = sum(float(b.get("balance", 0)) for b in load("bank_india.json"))
+    total = sum(float(b.get("balance", 0)) for b in load("bank_india.json")
+                if b.get("owner", "Vinay") in _FAMILY)
     for b in load("bank_uae.json"):
         curr = b.get("currency", "AED")
         rate = usd if curr == "USD" else aed
@@ -78,6 +83,8 @@ def _fx(curr):
 def fd_total_inr() -> float:
     total = 0.0
     for fd in load("fixed_deposits.json"):
+        if fd.get("owner") and fd["owner"] not in _FAMILY:
+            continue
         amt  = float(fd.get("amount", 0))
         curr = fd.get("currency", "INR")
         total += amt * _fx(curr)

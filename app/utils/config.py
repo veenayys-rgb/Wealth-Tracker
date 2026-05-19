@@ -23,6 +23,11 @@ TABLE_MAP = {
     "bank_uae.json":                   ("cfg_bank_uae",             None),
     "fixed_deposits.json":             ("cfg_fixed_deposits",       None),
     "insurance.json":                  ("cfg_insurance",            None),
+    # Mom — reuses same Supabase tables, owner="Mom"
+    "mom_equity_india.json":           ("cfg_equity_india",         "Mom"),
+    "mom_mutual_funds.json":           ("cfg_mutual_funds",         "Mom"),
+    "mom_bank_india.json":             ("cfg_bank_india",           "Mom"),
+    "mom_fixed_deposits.json":         ("cfg_fixed_deposits",       "Mom"),
 }
 
 

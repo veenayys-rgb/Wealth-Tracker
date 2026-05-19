@@ -1,6 +1,6 @@
 """Mom Equity Recon — HDFC Demat holding statement reconciliation."""
 import sys, os, re, io, json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 from utils.sidebar import render_sidebar
@@ -15,7 +15,7 @@ st.caption("Upload an HDFC Depository Holding Statement PDF to compare with Mom'
 render_sidebar()
 
 # ── DP Account → NRE/NRO mapping ──────────────────────────────────────────────
-_MAP_FILE = os.path.join(os.path.dirname(__file__), "../../dp_account_map_mom.json")
+_MAP_FILE = os.path.join(os.path.dirname(__file__), "../dp_account_map_mom.json")
 
 def _load_map() -> dict:
     if os.path.exists(_MAP_FILE):

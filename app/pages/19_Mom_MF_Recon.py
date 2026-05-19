@@ -1,6 +1,6 @@
 """Mom MF Recon — CAMS PDF reconciliation against stored holdings."""
 import sys, os, re, io
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 from utils.sidebar import render_sidebar

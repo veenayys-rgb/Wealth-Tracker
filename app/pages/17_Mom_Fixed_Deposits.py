@@ -1,6 +1,6 @@
 """Mom Fixed Deposits — India. Display + Quick Edit + Add/Edit/Delete."""
 import sys, os, datetime
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 from utils.sidebar import render_sidebar

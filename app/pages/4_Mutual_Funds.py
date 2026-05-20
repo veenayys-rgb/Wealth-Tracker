@@ -5,19 +5,61 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.sidebar import render_sidebar
 import pandas as pd
-import datetime
+import datetime, urllib.request, ssl
 from utils.db     import fetch, service_upsert
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics
 
+AMFI_URL = "https://www.amfiindia.com/spages/NAVAll.txt"
+
+
+def refresh_navs_from_amfi(isins: list[str]) -> tuple[int, int]:
+    """Fetch AMFI NAVAll.txt and upsert NAVs for the given ISINs.
+    Returns (updated_count, not_found_count)."""
+    if not isins:
+        return 0, 0
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode    = ssl.CERT_NONE
+    resp  = urllib.request.urlopen(AMFI_URL, timeout=30, context=ctx)
+    lines = resp.read().decode("utf-8", errors="ignore").splitlines()
+
+    amfi_index: dict[str, dict] = {}
+    for line in lines:
+        parts = line.strip().split(";")
+        if len(parts) < 6:
+            continue
+        try:
+            nav  = float(parts[4].strip())
+            name = parts[3].strip()
+            date = parts[5].strip()
+            for isin in [parts[1].strip().upper(), parts[2].strip().upper()]:
+                if isin:
+                    amfi_index[isin] = {"nav": nav, "name": name, "date": date}
+        except (ValueError, IndexError):
+            pass
+
+    rows, missing = [], []
+    for isin in isins:
+        if isin in amfi_index:
+            d = amfi_index[isin]
+            rows.append({
+                "isin":       isin,
+                "nav":        d["nav"],
+                "nav_date":   d["date"],
+                "amfi_name":  d["name"],
+                "fetched_at": datetime.datetime.utcnow().isoformat(),
+            })
+        else:
+            missing.append(isin)
+
+    if rows:
+        service_upsert("mf_navs", rows, conflict_col="isin")
+    return len(rows), len(missing)
+
 st.set_page_config(page_title="Mutual Funds | Wealth Tracker", page_icon="📊", layout="wide")
 st.title("📊 Mutual Funds")
 render_sidebar()
-
-navs      = {r["isin"]: r for r in fetch("mf_navs")}
-nav_dates = list({r["nav_date"] for r in navs.values() if r.get("nav_date")})
-nav_date  = nav_dates[0] if nav_dates else "—"
-st.caption(f"NAV Date: {nav_date}")
 
 OWNERS = [
     ("Vinay",  "mutual_funds_vinay.json"),
@@ -25,6 +67,30 @@ OWNERS = [
     ("Anusha", "mutual_funds_anusha.json"),
     ("Mom",    "mom_mutual_funds.json"),
 ]
+
+navs      = {r["isin"]: r for r in fetch("mf_navs")}
+nav_dates = list({r["nav_date"] for r in navs.values() if r.get("nav_date")})
+nav_date  = nav_dates[0] if nav_dates else "—"
+
+hdr_col, btn_col = st.columns([4, 1])
+hdr_col.caption(f"NAV Date: {nav_date}")
+if btn_col.button("🔄 Refresh NAVs", help="Pull latest NAVs from AMFI for all holdings"):
+    all_isins = list({
+        h.get("isin", "").strip().upper()
+        for _, fname in OWNERS
+        for h in load(fname)
+        if h.get("isin", "").strip()
+    })
+    with st.spinner(f"Fetching {len(all_isins)} NAVs from AMFI…"):
+        try:
+            ok, miss = refresh_navs_from_amfi(all_isins)
+            if miss:
+                st.warning(f"Updated {ok} NAVs — {miss} ISIN(s) not found in AMFI.")
+            else:
+                st.success(f"✅ {ok} NAVs updated from AMFI.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"AMFI fetch failed: {e}")
 
 all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
 owner_tabs = all_tabs[:len(OWNERS)]

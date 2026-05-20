@@ -58,7 +58,8 @@ def render_sidebar():
                     # Mutual Funds (AMFI)
                     holdings_mf = (load("mutual_funds_vinay.json") +
                                    load("mutual_funds_harsh.json") +
-                                   load("mutual_funds_anusha.json"))
+                                   load("mutual_funds_anusha.json") +
+                                   load("mom_mutual_funds.json"))
                     all_isins = {h.get("isin", "").upper() for h in holdings_mf if h.get("isin")}
                     if all_isins:
                         try:

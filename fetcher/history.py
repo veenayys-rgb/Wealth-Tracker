@@ -30,10 +30,16 @@ def get_latest_prices() -> dict:
     return eq, navs
 
 
+_FAMILY = {"Vinay", "Harsh", "Anusha"}   # owners included in family portfolio history
+
+
 def compute_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
     eq_invested = eq_cv = 0.0
 
     for h in fetch_cfg("cfg_equity_india"):
+        # Exclude non-family owners (e.g. Mom) from the family snapshot
+        if h.get("owner") and h["owner"] not in _FAMILY:
+            continue
         sym     = h["symbol"].upper()
         price   = eq_prices.get(sym, 0)
         qty     = float(h.get("qty", 0))

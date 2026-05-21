@@ -27,7 +27,7 @@ def fetch_one(table: str, col: str, val: str) -> dict | None:
 
 
 def get_forex() -> dict:
-    """Returns {AED_INR: float, USD_INR: float}"""
+    """Returns {AED_INR, USD_INR, NIFTY50, SENSEX, ...} as floats."""
     rows = fetch("forex_rates", "pair,rate")
     return {r["pair"]: float(r["rate"]) for r in rows}
 

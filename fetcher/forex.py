@@ -6,7 +6,8 @@ from db import upsert
 ssl._create_default_https_context = ssl._create_unverified_context
 os.environ["YFINANCE_CACHE_DIR"] = ""
 
-PAIRS = [("AED_INR", "AEDINR=X"), ("USD_INR", "USDINR=X")]
+PAIRS   = [("AED_INR", "AEDINR=X"), ("USD_INR", "USDINR=X")]
+INDICES = [("NIFTY50", "^NSEI"),    ("SENSEX",  "^BSESN")]
 
 
 def fetch_forex():
@@ -29,5 +30,23 @@ def fetch_forex():
             print(f"   ❌  {pair}: {e}")
         time.sleep(0.5)
 
+    print(f"\n📡  Market indices…")
+    for key, ticker in INDICES:
+        try:
+            info  = yf.Ticker(ticker).fast_info
+            price = getattr(info, "last_price", None)
+            if price and float(price) > 0:
+                rows.append({
+                    "pair":       key,
+                    "rate":       round(float(price), 2),
+                    "fetched_at": datetime.datetime.utcnow().isoformat(),
+                })
+                print(f"   ✅  {key:<10} = {float(price):,.2f}")
+            else:
+                print(f"   ⚠️   {key}: no price returned")
+        except Exception as e:
+            print(f"   ❌  {key}: {e}")
+        time.sleep(0.5)
+
     upsert("forex_rates", rows, conflict_col="pair")
-    print(f"   💾  {len(rows)} forex rates saved")
+    print(f"   💾  {len(rows)} rates/indices saved")

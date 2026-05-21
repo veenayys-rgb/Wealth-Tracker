@@ -13,11 +13,17 @@ st.set_page_config(page_title="Dashboard | Wealth Tracker", page_icon="📊", la
 st.title("📊 Dashboard")
 render_sidebar()
 
-# ── Forex ─────────────────────────────────────────────────────────────────────
-forex = get_forex()
-aed   = forex.get("AED_INR", 0)
-usd   = forex.get("USD_INR", 0)
-st.caption(f"AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
+# ── Forex + Market Indices ────────────────────────────────────────────────────
+forex   = get_forex()
+aed     = forex.get("AED_INR", 0)
+usd     = forex.get("USD_INR", 0)
+nifty   = forex.get("NIFTY50", 0)
+sensex  = forex.get("SENSEX",  0)
+
+_parts = [f"AED/INR: {aed:.4f}", f"USD/INR: {usd:.4f}"]
+if nifty  > 0: _parts.append(f"Nifty 50: {nifty:,.2f}")
+if sensex > 0: _parts.append(f"Sensex: {sensex:,.2f}")
+st.caption("  |  ".join(_parts))
 
 
 # ── Compute all asset values ──────────────────────────────────────────────────

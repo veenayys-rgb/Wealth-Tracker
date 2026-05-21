@@ -16,13 +16,19 @@ def render_sidebar():
                 try:
                     _updated = 0
 
-                    # Forex
-                    for pair, ticker in [("AED_INR", "AEDINR=X"), ("USD_INR", "USDINR=X")]:
+                    # Forex + Market Indices
+                    _rate_pairs = [
+                        ("AED_INR", "AEDINR=X", 6),
+                        ("USD_INR", "USDINR=X", 6),
+                        ("NIFTY50", "^NSEI",    2),
+                        ("SENSEX",  "^BSESN",   2),
+                    ]
+                    for pair, ticker, decimals in _rate_pairs:
                         try:
                             rate = getattr(yf.Ticker(ticker).fast_info, "last_price", None)
                             if rate and float(rate) > 0:
                                 service_upsert("forex_rates",
-                                               [{"pair": pair, "rate": round(float(rate), 6),
+                                               [{"pair": pair, "rate": round(float(rate), decimals),
                                                  "fetched_at": datetime.datetime.utcnow().isoformat()}],
                                                conflict_col="pair")
                         except Exception:

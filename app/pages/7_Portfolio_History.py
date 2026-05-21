@@ -26,7 +26,10 @@ df = df.sort_values("date").reset_index(drop=True)
 tab_vinay, tab_harsh, tab_anusha, tab_all, tab_mom = st.tabs(["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All", "👩 Mom"])
 
 
-def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
+PERIODS = {"1M": 30, "6M": 180, "1Y": 365, "All": None}
+
+
+def chart_and_table(chart_df, label_inv, label_cv, date_col="date", tab_key=""):
     """Render line chart + summary metrics + data table."""
     latest = chart_df.iloc[-1]
     gl     = float(latest[label_cv]) - float(latest[label_inv])
@@ -37,12 +40,22 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date"):
     c2.metric("Current Value", ind_num(latest[label_cv]))
     c3.metric("Gain / Loss",   ind_num(gl), f"{ret:+.2f}%")
 
-    dates    = chart_df[date_col]
-    inv_vals = chart_df[label_inv]
-    cv_vals  = chart_df[label_cv]
+    # ── Period filter ─────────────────────────────────────────────────────────
+    st.subheader("Trend")
+    sel = st.radio("Period", list(PERIODS.keys()), index=3,
+                   horizontal=True, key=f"period_{tab_key}")
+    days = PERIODS[sel]
+    if days:
+        cutoff    = chart_df[date_col].max() - pd.Timedelta(days=days)
+        plot_df   = chart_df[chart_df[date_col] >= cutoff]
+    else:
+        plot_df   = chart_df
+
+    dates    = plot_df[date_col]
+    inv_vals = plot_df[label_inv]
+    cv_vals  = plot_df[label_cv]
 
     # ── Trend line chart ──────────────────────────────────────────────────────
-    st.subheader("Trend")
     y_min = min(inv_vals.min(), cv_vals.min()) * 0.995
     y_max = max(inv_vals.max(), cv_vals.max()) * 1.005
     fig_trend = go.Figure()
@@ -127,7 +140,7 @@ with tab_all:
         "gain_loss":      "Gain/Loss",
         "return_pct":     "Return %",
     })
-    chart_and_table(view, "total_invested", "total_cv")
+    chart_and_table(view, "total_invested", "total_cv", tab_key="all")
     money_cols = [c for c in view.columns if c not in ("date", "Return %", "total_invested", "total_cv")]
     money_cols += ["Gain/Loss"]
     final = view.drop(columns=["total_invested", "total_cv"]).copy()
@@ -143,7 +156,7 @@ with tab_vinay:
     view["vinay_invested"] = view["shares_invested"] + view["mf_inv_vinay"]
     view["vinay_cv"]       = view["shares_cv"]       + view["mf_cv_vinay"]
     view["gain_loss"]      = view["vinay_cv"] - view["vinay_invested"]
-    chart_and_table(view, "vinay_invested", "vinay_cv")
+    chart_and_table(view, "vinay_invested", "vinay_cv", tab_key="vinay")
     disp = view[["date", "shares_invested", "shares_cv", "mf_inv_vinay", "mf_cv_vinay", "vinay_invested", "vinay_cv", "gain_loss"]].rename(columns={
         "shares_invested": "Equity Invested",
         "shares_cv":       "Equity CV",
@@ -161,7 +174,7 @@ with tab_vinay:
 with tab_harsh:
     view = df[["date", "mf_inv_harsh", "mf_cv_harsh"]].copy()
     view["gain_loss"] = view["mf_cv_harsh"] - view["mf_inv_harsh"]
-    chart_and_table(view, "mf_inv_harsh", "mf_cv_harsh")
+    chart_and_table(view, "mf_inv_harsh", "mf_cv_harsh", tab_key="harsh")
     disp = view.rename(columns={
         "mf_inv_harsh": "MF Invested",
         "mf_cv_harsh":  "MF Current Value",
@@ -177,7 +190,7 @@ with tab_anusha:
     view["gain_loss"] = view["mf_cv_anusha"] - view["mf_inv_anusha"]
     has_data = view["mf_inv_anusha"].sum() > 0
     if has_data:
-        chart_and_table(view, "mf_inv_anusha", "mf_cv_anusha")
+        chart_and_table(view, "mf_inv_anusha", "mf_cv_anusha", tab_key="anusha")
         disp = view.rename(columns={
             "mf_inv_anusha": "MF Invested",
             "mf_cv_anusha":  "MF Current Value",
@@ -218,7 +231,7 @@ with tab_mom:
         view = mdf[["date", "eq_invested", "eq_cv", "mf_invested", "mf_cv",
                     "total_invested", "total_cv"]].copy()
         view["gain_loss"] = view["total_cv"] - view["total_invested"]
-        chart_and_table(view, "total_invested", "total_cv")
+        chart_and_table(view, "total_invested", "total_cv", tab_key="mom")
         disp = view.rename(columns={
             "eq_invested":    "Equity Invested",
             "eq_cv":          "Equity CV",

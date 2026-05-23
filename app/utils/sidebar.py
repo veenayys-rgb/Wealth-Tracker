@@ -35,31 +35,50 @@ def render_sidebar():
                             pass
                         time.sleep(0.3)
 
-                    # India Equity
+                    # India Equity — NSE batch, then BSE fallback for misses
                     holdings_eq = load("equity_india.json")
                     if holdings_eq:
-                        syms    = list({h["symbol"].upper() for h in holdings_eq})
-                        tickers = [f"{s}.NS" for s in syms]
+                        syms = list({h["symbol"].upper() for h in holdings_eq if h.get("symbol","").strip()})
+                        ssl._create_default_https_context = ssl._create_unverified_context
+                        eq_rows   = []
+                        nse_miss  = []
+
+                        # ── NSE batch ──────────────────────────────────────────
+                        nse_tickers = [f"{s}.NS" for s in syms]
                         try:
-                            ssl._create_default_https_context = ssl._create_unverified_context
-                            raw   = yf.download(tickers, period="2d", auto_adjust=True,
+                            raw   = yf.download(nse_tickers, period="2d", auto_adjust=True,
                                                 progress=False, group_by="ticker", threads=True)
-                            multi = len(tickers) > 1
-                            eq_rows = []
-                            for s, t in zip(syms, tickers):
+                            multi = len(nse_tickers) > 1
+                            for s, t in zip(syms, nse_tickers):
                                 try:
                                     closes = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
                                     price  = round(float(closes.iloc[-1]), 4) if len(closes) > 0 else 0
                                     if price > 0:
                                         eq_rows.append({"symbol": s, "price": price,
                                                         "fetched_at": datetime.datetime.utcnow().isoformat()})
+                                    else:
+                                        nse_miss.append(s)
                                 except Exception:
-                                    pass
-                            if eq_rows:
-                                service_upsert("equity_india_prices", eq_rows, conflict_col="symbol")
-                                _updated += len(eq_rows)
+                                    nse_miss.append(s)
                         except Exception:
-                            pass
+                            nse_miss = syms   # full batch failed — retry all via BSE
+
+                        # ── BSE individual fallback ────────────────────────────
+                        for s in nse_miss:
+                            try:
+                                info  = yf.Ticker(f"{s}.BO").fast_info
+                                price = getattr(info, "last_price", None)
+                                if price and float(price) > 0:
+                                    eq_rows.append({"symbol": s, "price": round(float(price), 4),
+                                                    "fetched_at": datetime.datetime.utcnow().isoformat()})
+                            except Exception:
+                                pass
+                            time.sleep(0.3)
+
+                        if eq_rows:
+                            deduped = list({r["symbol"]: r for r in eq_rows}.values())
+                            service_upsert("equity_india_prices", deduped, conflict_col="symbol")
+                            _updated += len(deduped)
 
                     # Mutual Funds (AMFI)
                     holdings_mf = (load("mutual_funds_vinay.json") +

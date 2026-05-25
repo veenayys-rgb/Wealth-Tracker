@@ -20,14 +20,19 @@ aed   = forex.get("AED_INR", 0)
 usd   = forex.get("USD_INR", 0)
 
 
+_FAMILY = {"Vinay", "Harsh", "Anusha"}
+
+
 def build_allocation(owner: str) -> pd.DataFrame:
     eq_prices = {r["symbol"]: float(r["price"]) for r in fetch("equity_india_prices")}
     mf_navs   = {r["isin"]: float(r["nav"])     for r in fetch("mf_navs")}
 
-    # Equity — only Vinay has India equity currently
+    # Equity
     eq_inv = eq_cv = 0.0
     if owner in ("Vinay", "Combined"):
         for h in load("equity_india.json"):
+            if h.get("owner") and h["owner"] not in _FAMILY:
+                continue          # exclude Mom from Combined
             qty   = float(h.get("qty", 0))
             cost  = float(h.get("avg_cost", 0))
             price = eq_prices.get(h["symbol"].upper(), 0)
@@ -51,16 +56,24 @@ def build_allocation(owner: str) -> pd.DataFrame:
     # Bank India
     bank_inv = bank_cv = 0.0
     for b in load("bank_india.json"):
-        if owner == "Combined" or b.get("owner") == owner:
-            bank_cv += float(b.get("balance", 0))
+        b_owner = b.get("owner", "Vinay")
+        if owner == "Combined" and b_owner not in _FAMILY:
+            continue
+        if owner != "Combined" and b_owner != owner:
+            continue
+        bank_cv += float(b.get("balance", 0))
 
     # Bank UAE
     uae_inv = uae_cv = 0.0
     for b in load("bank_uae.json"):
-        if owner == "Combined" or b.get("owner") == owner:
-            curr = b.get("currency", "AED")
-            rate = usd if curr == "USD" else aed
-            uae_cv += float(b.get("balance_aed", 0)) * rate
+        b_owner = b.get("owner", "Vinay")
+        if owner == "Combined" and b_owner not in _FAMILY:
+            continue
+        if owner != "Combined" and b_owner != owner:
+            continue
+        curr = b.get("currency", "AED")
+        rate = usd if curr == "USD" else aed
+        uae_cv += float(b.get("balance_aed", 0)) * rate
 
     def _fx(curr):
         if curr == "AED": return aed
@@ -70,18 +83,26 @@ def build_allocation(owner: str) -> pd.DataFrame:
     # FD
     fd_inv = fd_cv = 0.0
     for fd in load("fixed_deposits.json"):
-        if owner == "Combined" or fd.get("owner") == owner:
-            amt  = float(fd.get("amount", 0))
-            curr = fd.get("currency", "INR")
-            fd_cv += amt * _fx(curr)
+        fd_owner = fd.get("owner", "Vinay")
+        if owner == "Combined" and fd_owner not in _FAMILY:
+            continue
+        if owner != "Combined" and fd_owner != owner:
+            continue
+        amt  = float(fd.get("amount", 0))
+        curr = fd.get("currency", "INR")
+        fd_cv += amt * _fx(curr)
 
     # Insurance (surrender value)
     ins_cv = 0.0
     for p in load("insurance.json"):
-        if owner == "Combined" or p.get("owner") == owner:
-            sv   = float(p.get("surrender_value", 0))
-            curr = p.get("currency", "INR")
-            ins_cv += sv * _fx(curr)
+        p_owner = p.get("owner", "Vinay")
+        if owner == "Combined" and p_owner not in _FAMILY:
+            continue
+        if owner != "Combined" and p_owner != owner:
+            continue
+        sv   = float(p.get("surrender_value", 0))
+        curr = p.get("currency", "INR")
+        ins_cv += sv * _fx(curr)
 
     total_inv = eq_inv + mf_inv + bank_inv + uae_inv + fd_inv
     total_cv  = eq_cv  + mf_cv  + bank_cv  + uae_cv  + fd_cv + ins_cv

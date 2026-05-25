@@ -7,7 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, get_forex, service_upsert
 from utils.config import load, save
-from utils.fmt    import ind_num, plain_num, total_metrics
+from utils.fmt    import ind_num, plain_num, total_metrics, fmt_date, parse_date
 
 st.set_page_config(page_title="International Equity | Wealth Tracker", page_icon="🌍", layout="wide")
 st.title("🌍 International Equity")
@@ -83,7 +83,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     "Exchange":            h.get("exchange", "") or "—",
                     "Currency":            curr,
                     "Source":              h.get("source", "") or "—",
-                    "Buy Date":            h.get("buy_date", "") or "—",
+                    "Buy Date":            fmt_date(h.get("buy_date", "")),
                 })
 
             total_cv_safe = total_cv if total_cv > 0 else 1.0
@@ -131,7 +131,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         "Symbol":              sym,
                         "Company Name":        h.get("name", "") or "—",
                         "Source":              h.get("source", "Market"),
-                        "Buy Date":            h.get("buy_date", ""),
+                        "Buy Date":            parse_date(h.get("buy_date", "")),
                         "Qty":                 float(h.get("qty", 0)),
                         "Avg Cost (FCY)":      float(h.get("avg_cost", 0)),
                         "Current Price (FCY)": prices.get(sym, 0.0),
@@ -143,7 +143,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         "Symbol":              st.column_config.TextColumn(),
                         "Company Name":        st.column_config.TextColumn(width="medium"),
                         "Source":              st.column_config.SelectboxColumn(options=SOURCES),
-                        "Buy Date":            st.column_config.TextColumn(),
+                        "Buy Date":            st.column_config.DateColumn(format="DD-MMM-YYYY"),
                         "Qty":                 st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                         "Avg Cost (FCY)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                         "Current Price (FCY)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
@@ -157,7 +157,8 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         holdings[i]["symbol"]   = str(edited.iloc[i]["Symbol"]).upper()
                         holdings[i]["name"]     = str(edited.iloc[i]["Company Name"])
                         holdings[i]["source"]   = str(edited.iloc[i]["Source"])
-                        holdings[i]["buy_date"] = str(edited.iloc[i]["Buy Date"])
+                        raw_bd = edited.iloc[i]["Buy Date"]
+                        holdings[i]["buy_date"] = raw_bd.isoformat() if isinstance(raw_bd, datetime.date) else (str(raw_bd)[:10] if raw_bd else "")
                         holdings[i]["qty"]      = float(edited.iloc[i]["Qty"])
                         holdings[i]["avg_cost"] = float(edited.iloc[i]["Avg Cost (FCY)"])
                         new_price = float(edited.iloc[i]["Current Price (FCY)"] or 0)
@@ -198,7 +199,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 currency = c6.selectbox("Currency", CURRENCIES)
                 c7, c8, c9 = st.columns(3)
                 source   = c7.selectbox("Source", SOURCES)
-                buy_date = c8.date_input("Buy Date", value=datetime.date.today())
+                buy_date = c8.date_input("Buy Date", value=datetime.date.today(), format="DD/MM/YYYY")
                 qty      = c9.number_input("Quantity",       min_value=0.0, step=1.0,  format="%.4f")
                 avg_cost = st.number_input("Avg Cost (FCY)", min_value=0.0, step=0.01, format="%.4f")
                 if st.form_submit_button("Add Holding"):
@@ -238,9 +239,8 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     c7, c8, c9 = st.columns(3)
                     source   = c7.selectbox("Source", SOURCES,
                                             index=SOURCES.index(h.get("source","Market")) if h.get("source") in SOURCES else 0)
-                    try:    bd = datetime.date.fromisoformat(h.get("buy_date","2024-01-01"))
-                    except: bd = datetime.date.today()
-                    buy_date = c8.date_input("Buy Date", value=bd, key=f"edit_intl_bd_{owner}")
+                    buy_date = c8.date_input("Buy Date", value=parse_date(h.get("buy_date")) or datetime.date.today(),
+                                            format="DD/MM/YYYY", key=f"edit_intl_bd_{owner}")
                     qty      = c9.number_input("Quantity",       value=float(h.get("qty",0)),      min_value=0.0, step=1.0,  format="%.4f")
                     avg_cost = st.number_input("Avg Cost (FCY)", value=float(h.get("avg_cost",0)), min_value=0.0, step=0.01, format="%.4f")
                     if st.form_submit_button("Save Changes"):

@@ -6,6 +6,7 @@ import streamlit as st
 from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.config import load, save
+from utils.fmt    import fmt_date, parse_date
 
 st.set_page_config(page_title="Insurance | Wealth Tracker", page_icon="🛡️", layout="wide")
 st.title("🛡️ Insurance")
@@ -38,9 +39,10 @@ def _due_label(due_str):
     if not due_str:
         return "—"
     try:
-        due_date  = datetime.date.fromisoformat(due_str)
+        due_date  = datetime.date.fromisoformat(str(due_str)[:10])
         days_left = (due_date - today).days
-        return f"{due_str}  ({days_left}d)" if days_left <= 30 else due_str
+        label = fmt_date(due_str)
+        return f"{label}  ({days_left}d)" if days_left <= 30 else label
     except Exception:
         return due_str
 
@@ -84,7 +86,7 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     "Years Paid":         _blank(p.get("years_paid")),
                     "Total Premium Paid": f"{tot_paid:,.2f}",
                     "Next Due":           _due_label(p.get("next_premium_due", "")),
-                    "Maturity Date":      _blank(p.get("maturity_date")),
+                    "Maturity Date":      fmt_date(p.get("maturity_date")),
                 })
 
             df = pd.DataFrame(rows)
@@ -111,23 +113,24 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 qe_rows = [{"Company": p.get("company_name",""), "Policy No": p.get("policy_no",""),
                             "Surrender Value": float(p.get("surrender_value", 0)),
                             "Years Paid": str(p.get("years_paid", "")),
-                            "Next Premium Due": str(p.get("next_premium_due", ""))} for p in subset]
+                            "Next Premium Due": parse_date(p.get("next_premium_due", ""))} for p in subset]
                 qe_ed = st.data_editor(
                     pd.DataFrame(qe_rows),
                     column_config={
-                        "Company":         st.column_config.TextColumn(disabled=True),
-                        "Policy No":       st.column_config.TextColumn(disabled=True),
-                        "Surrender Value": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
-                        "Years Paid":      st.column_config.TextColumn(),
-                        "Next Premium Due": st.column_config.TextColumn(),
+                        "Company":          st.column_config.TextColumn(disabled=True),
+                        "Policy No":        st.column_config.TextColumn(disabled=True),
+                        "Surrender Value":  st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                        "Years Paid":       st.column_config.TextColumn(),
+                        "Next Premium Due": st.column_config.DateColumn(format="DD-MMM-YYYY"),
                     },
                     hide_index=True, use_container_width=True, key=f"qe_ins_{oi}",
                 )
                 if st.button("💾 Save Changes", key=f"qsave_ins_{oi}"):
                     for j, (fi, _) in enumerate(idxmap):
-                        policies[fi]["surrender_value"]  = float(qe_ed.iloc[j]["Surrender Value"])
-                        policies[fi]["years_paid"]       = str(qe_ed.iloc[j]["Years Paid"])
-                        policies[fi]["next_premium_due"] = str(qe_ed.iloc[j]["Next Premium Due"])
+                        policies[fi]["surrender_value"] = float(qe_ed.iloc[j]["Surrender Value"])
+                        policies[fi]["years_paid"]      = str(qe_ed.iloc[j]["Years Paid"])
+                        raw_nd = qe_ed.iloc[j]["Next Premium Due"]
+                        policies[fi]["next_premium_due"] = raw_nd.isoformat() if isinstance(raw_nd, datetime.date) else (str(raw_nd)[:10] if raw_nd else "")
                         calc = _calc_total_premium(float(policies[fi].get("premium_amount", 0)),
                                                    policies[fi]["years_paid"])
                         if calc is not None:
@@ -163,9 +166,9 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 prem_term  = c10.text_input("Premium Payment Term (e.g. 10 years)")
                 years_paid = c11.text_input("Years Premium Paid")
                 c12, c13 = st.columns(2)
-                next_due      = c12.date_input("Next Premium Due", value=datetime.date.today())
+                next_due      = c12.date_input("Next Premium Due", value=datetime.date.today(), format="DD/MM/YYYY")
                 try_mat       = datetime.date(today.year + 1, today.month, today.day)
-                maturity_date = c13.date_input("Maturity Date", value=try_mat)
+                maturity_date = c13.date_input("Maturity Date",    value=try_mat, format="DD/MM/YYYY")
                 if st.form_submit_button("Add Policy"):
                     if not company_name.strip():
                         st.error("Company Name is required.")
@@ -227,12 +230,8 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     prem_term  = c10.text_input("Premium Payment Term", value=p.get("premium_payment_term",""))
                     years_paid = c11.text_input("Years Premium Paid",   value=str(p.get("years_paid","")))
                     c12, c13 = st.columns(2)
-                    try:    nd  = datetime.date.fromisoformat(p.get("next_premium_due","2024-01-01"))
-                    except: nd  = datetime.date.today()
-                    try:    mat = datetime.date.fromisoformat(p.get("maturity_date","2025-01-01"))
-                    except: mat = datetime.date.today()
-                    next_due      = c12.date_input("Next Premium Due", value=nd,  key=f"edit_ins_nd_{oi}")
-                    maturity_date = c13.date_input("Maturity Date",    value=mat, key=f"edit_ins_mat_{oi}")
+                    next_due      = c12.date_input("Next Premium Due", value=parse_date(p.get("next_premium_due")) or datetime.date.today(), format="DD/MM/YYYY", key=f"edit_ins_nd_{oi}")
+                    maturity_date = c13.date_input("Maturity Date",    value=parse_date(p.get("maturity_date"))    or datetime.date.today(), format="DD/MM/YYYY", key=f"edit_ins_mat_{oi}")
                     if st.form_submit_button("Save Changes"):
                         calc = _calc_total_premium(premium_amount, years_paid)
                         policies[fi] = {

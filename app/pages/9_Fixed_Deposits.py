@@ -7,6 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import get_forex
 from utils.config import load, save
+from utils.fmt    import fmt_date, parse_date
 
 st.set_page_config(page_title="Fixed Deposits | Wealth Tracker", page_icon="🏛️", layout="wide")
 st.title("🏛️ Fixed Deposits")
@@ -62,8 +63,8 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     "Amount":             f"{amt:,.2f}",
                     "Equiv INR":          f"₹ {equiv:,.2f}",
                     "Rate % p.a.":        f"{float(fd.get('rate_pa', 0)):.2f}%",
-                    "Start Date":         _blank(fd.get("start_date")),
-                    "Maturity Date":      _blank(fd.get("maturity_date")),
+                    "Start Date":         fmt_date(fd.get("start_date")),
+                    "Maturity Date":      fmt_date(fd.get("maturity_date")),
                     "Maturity Amount":    f"{mat_amt:,.2f}",
                     "Maturity INR":       f"₹ {mat_inr:,.2f}",
                 })
@@ -134,8 +135,8 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 amount   = c5.number_input("Amount", min_value=0.0, step=1000.0, format="%.2f")
                 rate_pa  = c6.number_input("Rate % p.a.", min_value=0.0, step=0.01, format="%.2f")
                 c7, c8 = st.columns(2)
-                start_date    = c7.date_input("Start Date",    value=datetime.date.today())
-                maturity_date = c8.date_input("Maturity Date", value=datetime.date.today())
+                start_date    = c7.date_input("Start Date",    value=datetime.date.today(), format="DD/MM/YYYY")
+                maturity_date = c8.date_input("Maturity Date", value=datetime.date.today(), format="DD/MM/YYYY")
                 maturity_amount = st.number_input("Maturity Amount", min_value=0.0, step=1000.0, format="%.2f")
                 if st.form_submit_button("Add FD"):
                     if not bank.strip():
@@ -183,12 +184,8 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     rate_pa  = c6.number_input("Rate % p.a.", value=float(fd.get("rate_pa",0)),
                                                min_value=0.0, step=0.01, format="%.2f")
                     c7, c8 = st.columns(2)
-                    try:    sd = datetime.date.fromisoformat(fd.get("start_date","2024-01-01"))
-                    except: sd = datetime.date.today()
-                    try:    md = datetime.date.fromisoformat(fd.get("maturity_date","2024-01-01"))
-                    except: md = datetime.date.today()
-                    start_date    = c7.date_input("Start Date",    value=sd, key=f"edit_fd_sd_{oi}")
-                    maturity_date = c8.date_input("Maturity Date", value=md, key=f"edit_fd_md_{oi}")
+                    start_date    = c7.date_input("Start Date",    value=parse_date(fd.get("start_date"))    or datetime.date.today(), format="DD/MM/YYYY", key=f"edit_fd_sd_{oi}")
+                    maturity_date = c8.date_input("Maturity Date", value=parse_date(fd.get("maturity_date")) or datetime.date.today(), format="DD/MM/YYYY", key=f"edit_fd_md_{oi}")
                     maturity_amount = st.number_input("Maturity Amount", value=float(fd.get("maturity_amount",0)),
                                                       min_value=0.0, step=1000.0, format="%.2f")
                     if st.form_submit_button("Save Changes"):

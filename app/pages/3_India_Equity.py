@@ -7,7 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, service_upsert
 from utils.config import load, save
-from utils.fmt    import ind_num, total_metrics
+from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date
 
 st.set_page_config(page_title="India Equity | Wealth Tracker", page_icon="📈", layout="wide")
 st.title("📈 India Equity")
@@ -19,18 +19,6 @@ last_fetch  = prices_rows[0]["fetched_at"][:19].replace("T", " ") if prices_rows
 st.caption(f"Last fetched: {last_fetch} UTC")
 
 HOLDING_TYPES = ["NRE", "NRO", "Resident"]
-
-
-def _fmt_date(d) -> str:
-    """Convert ISO date string or date object → DD-MMM-YYYY, or '—' if blank."""
-    try:
-        if not d or str(d).strip() in ("", "—", "None"):
-            return "—"
-        if isinstance(d, (datetime.date, datetime.datetime)):
-            return d.strftime("%d-%b-%Y")
-        return datetime.date.fromisoformat(str(d)[:10]).strftime("%d-%b-%Y")
-    except Exception:
-        return str(d) or "—"
 
 
 OWNERS = [
@@ -77,7 +65,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     "Symbol":            sym,
                     "Holding Type":      h.get("holding_type", "") or "—",
                     "Source":            h.get("source", "") or "—",
-                    "Buy Date":          _fmt_date(h.get("buy_date", "")),
+                    "Buy Date":          fmt_date(h.get("buy_date", "")),
                 })
 
             total_cv_safe = total_cv if total_cv > 0 else 1.0
@@ -117,11 +105,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 qe_rows = []
                 for h in holdings:
                     sym = h["symbol"].upper()
-                    raw_bd = h.get("buy_date", "")
-                    try:
-                        bd_val = datetime.date.fromisoformat(str(raw_bd)[:10]) if raw_bd and str(raw_bd).strip() not in ("", "—") else None
-                    except Exception:
-                        bd_val = None
+                    bd_val = parse_date(h.get("buy_date", ""))
                     qe_rows.append({
                         "☑":                 False,
                         "Symbol":            sym,
@@ -231,9 +215,8 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     source   = c5.selectbox("Source", ["Market","IPO","DAD"],
                                             index=["Market","IPO","DAD"].index(h.get("source","Market"))
                                             if h.get("source") in ["Market","IPO","DAD"] else 0)
-                    try:    bd = datetime.date.fromisoformat(h.get("buy_date","2024-01-01"))
-                    except: bd = datetime.date.today()
-                    buy_date = c6.date_input("Buy Date", value=bd, format="DD/MM/YYYY", key=f"edit_bd_{owner}")
+                    buy_date = c6.date_input("Buy Date", value=parse_date(h.get("buy_date")) or datetime.date.today(),
+                                            format="DD/MM/YYYY", key=f"edit_bd_{owner}")
                     c7, c8 = st.columns(2)
                     qty      = c7.number_input("Quantity",     value=float(h.get("qty",0)),      min_value=0.0, step=1.0,  format="%.4f")
                     avg_cost = c8.number_input("Avg Cost (₹)", value=float(h.get("avg_cost",0)), min_value=0.0, step=0.01, format="%.2f")

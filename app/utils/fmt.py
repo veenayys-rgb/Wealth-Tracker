@@ -1,6 +1,32 @@
 """Formatting helpers for Streamlit pages."""
-import math
+import math, datetime
 import pandas as pd
+
+
+def fmt_date(d) -> str:
+    """Convert ISO date string / date object → DD-MMM-YYYY, or '—' if blank."""
+    try:
+        if not d or str(d).strip() in ("", "—", "None", "nan"):
+            return "—"
+        if isinstance(d, (datetime.date, datetime.datetime)):
+            return d.strftime("%d-%b-%Y")
+        return datetime.date.fromisoformat(str(d)[:10]).strftime("%d-%b-%Y")
+    except Exception:
+        return str(d) or "—"
+
+
+def parse_date(d) -> datetime.date | None:
+    """Safely parse an ISO string or date object → datetime.date, or None."""
+    try:
+        if not d or str(d).strip() in ("", "—", "None", "nan"):
+            return None
+        if isinstance(d, datetime.datetime):
+            return d.date()
+        if isinstance(d, datetime.date):
+            return d
+        return datetime.date.fromisoformat(str(d)[:10])
+    except Exception:
+        return None
 
 
 def ind_num(n, prefix="₹ ", decimals=2) -> str:

@@ -35,10 +35,28 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date", tab_key=""):
     gl     = float(latest[label_cv]) - float(latest[label_inv])
     ret    = (gl / float(latest[label_inv]) * 100) if float(latest[label_inv]) > 0 else 0.0
 
+    # ── Day-over-day deltas ───────────────────────────────────────────────────
+    prev_date = None
+    d_inv = d_cv = d_gl = None
+    if len(chart_df) >= 2:
+        prev      = chart_df.iloc[-2]
+        prev_date = prev[date_col].strftime("%d-%b-%Y")
+        d_inv = float(latest[label_inv]) - float(prev[label_inv])
+        d_cv  = float(latest[label_cv])  - float(prev[label_cv])
+        prev_gl = float(prev[label_cv]) - float(prev[label_inv])
+        d_gl  = gl - prev_gl
+
     c1, c2, c3 = st.columns(3)
-    c1.metric("Invested",      ind_num(latest[label_inv]))
-    c2.metric("Current Value", ind_num(latest[label_cv]))
+    c1.metric("Invested",      ind_num(latest[label_inv]),
+              delta=ind_num(d_inv) if d_inv is not None and abs(d_inv) > 0 else None,
+              delta_color="normal")
+    c2.metric("Current Value", ind_num(latest[label_cv]),
+              delta=ind_num(d_cv)  if d_cv  is not None and abs(d_cv)  > 0 else None,
+              delta_color="normal")
     c3.metric("Gain / Loss",   ind_num(gl), f"{ret:+.2f}%")
+
+    if prev_date:
+        st.caption(f"↕ Arrows show change vs previous snapshot ({prev_date})")
 
     # ── Trend chart (collapsible) ─────────────────────────────────────────────
     with st.expander("📈 Trend", expanded=True):

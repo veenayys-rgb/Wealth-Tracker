@@ -1,5 +1,6 @@
 """Formatting helpers for Streamlit pages."""
-import math, datetime
+import math
+import datetime
 import pandas as pd
 
 

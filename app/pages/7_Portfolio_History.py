@@ -40,37 +40,36 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date", tab_key=""):
     c2.metric("Current Value", ind_num(latest[label_cv]))
     c3.metric("Gain / Loss",   ind_num(gl), f"{ret:+.2f}%")
 
-    # ── Period filter ─────────────────────────────────────────────────────────
-    st.subheader("Trend")
-    sel = st.radio("Period", list(PERIODS.keys()), index=3,
-                   horizontal=True, key=f"period_{tab_key}")
-    days = PERIODS[sel]
-    if days:
-        cutoff    = chart_df[date_col].max() - pd.Timedelta(days=days)
-        plot_df   = chart_df[chart_df[date_col] >= cutoff]
-    else:
-        plot_df   = chart_df
+    # ── Trend chart (collapsible) ─────────────────────────────────────────────
+    with st.expander("📈 Trend", expanded=True):
+        sel = st.radio("Period", list(PERIODS.keys()), index=3,
+                       horizontal=True, key=f"period_{tab_key}")
+        days = PERIODS[sel]
+        if days:
+            cutoff  = chart_df[date_col].max() - pd.Timedelta(days=days)
+            plot_df = chart_df[chart_df[date_col] >= cutoff]
+        else:
+            plot_df = chart_df
 
-    dates    = plot_df[date_col]
-    inv_vals = plot_df[label_inv]
-    cv_vals  = plot_df[label_cv]
+        dates    = plot_df[date_col]
+        inv_vals = plot_df[label_inv]
+        cv_vals  = plot_df[label_cv]
 
-    # ── Trend line chart ──────────────────────────────────────────────────────
-    y_min = min(inv_vals.min(), cv_vals.min()) * 0.995
-    y_max = max(inv_vals.max(), cv_vals.max()) * 1.005
-    fig_trend = go.Figure()
-    fig_trend.add_trace(go.Scatter(x=dates, y=inv_vals, mode="lines+markers",
-                                   name="Invested", line=dict(color="#636EFA", width=2)))
-    fig_trend.add_trace(go.Scatter(x=dates, y=cv_vals,  mode="lines+markers",
-                                   name="Current Value", line=dict(color="#00CC96", width=2)))
-    fig_trend.update_layout(
-        yaxis=dict(range=[y_min, y_max], tickformat=",.0f"),
-        xaxis=dict(title="Date"),
-        hovermode="x unified", height=380,
-        margin=dict(l=0, r=0, t=10, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    )
-    st.plotly_chart(fig_trend, use_container_width=True)
+        y_min = min(inv_vals.min(), cv_vals.min()) * 0.995
+        y_max = max(inv_vals.max(), cv_vals.max()) * 1.005
+        fig_trend = go.Figure()
+        fig_trend.add_trace(go.Scatter(x=dates, y=inv_vals, mode="lines+markers",
+                                       name="Invested", line=dict(color="#636EFA", width=2)))
+        fig_trend.add_trace(go.Scatter(x=dates, y=cv_vals,  mode="lines+markers",
+                                       name="Current Value", line=dict(color="#00CC96", width=2)))
+        fig_trend.update_layout(
+            yaxis=dict(range=[y_min, y_max], tickformat=",.0f"),
+            xaxis=dict(title="Date"),
+            hovermode="x unified", height=380,
+            margin=dict(l=0, r=0, t=10, b=0),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        )
+        st.plotly_chart(fig_trend, use_container_width=True)
 
 
 

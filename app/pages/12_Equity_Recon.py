@@ -142,10 +142,10 @@ except Exception as e:
 
 # ── Auto-detect NRE/NRO ────────────────────────────────────────────────────────
 auto_ht    = dp_map.get(dp_account, "")
-ht_options = ["NRO", "NRE"]
+ht_options = ["NRO", "NRE", "Resident"]
 
 if auto_ht:
-    default_idx = ht_options.index(auto_ht)
+    default_idx = ht_options.index(auto_ht) if auto_ht in ht_options else 0
     c2.success(f"Auto-detected: **{auto_ht}** (DP Acct: `{dp_account}`)")
 else:
     default_idx = 0

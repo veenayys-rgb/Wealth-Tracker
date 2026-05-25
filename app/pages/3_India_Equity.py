@@ -18,6 +18,21 @@ prices      = {r["symbol"]: float(r["price"]) for r in prices_rows}
 last_fetch  = prices_rows[0]["fetched_at"][:19].replace("T", " ") if prices_rows else "—"
 st.caption(f"Last fetched: {last_fetch} UTC")
 
+HOLDING_TYPES = ["NRE", "NRO", "Resident"]
+
+
+def _fmt_date(d) -> str:
+    """Convert ISO date string or date object → DD-MMM-YYYY, or '—' if blank."""
+    try:
+        if not d or str(d).strip() in ("", "—", "None"):
+            return "—"
+        if isinstance(d, (datetime.date, datetime.datetime)):
+            return d.strftime("%d-%b-%Y")
+        return datetime.date.fromisoformat(str(d)[:10]).strftime("%d-%b-%Y")
+    except Exception:
+        return str(d) or "—"
+
+
 OWNERS = [
     ("Vinay",  "equity_india_vinay.json"),
     ("Harsh",  "equity_india_harsh.json"),
@@ -62,7 +77,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     "Symbol":            sym,
                     "Holding Type":      h.get("holding_type", "") or "—",
                     "Source":            h.get("source", "") or "—",
-                    "Buy Date":          h.get("buy_date", "") or "—",
+                    "Buy Date":          _fmt_date(h.get("buy_date", "")),
                 })
 
             total_cv_safe = total_cv if total_cv > 0 else 1.0
@@ -102,12 +117,17 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 qe_rows = []
                 for h in holdings:
                     sym = h["symbol"].upper()
+                    raw_bd = h.get("buy_date", "")
+                    try:
+                        bd_val = datetime.date.fromisoformat(str(raw_bd)[:10]) if raw_bd and str(raw_bd).strip() not in ("", "—") else None
+                    except Exception:
+                        bd_val = None
                     qe_rows.append({
                         "☑":                 False,
                         "Symbol":            sym,
                         "Holding Type":      h.get("holding_type", "NRE"),
                         "Source":            h.get("source", "Market"),
-                        "Buy Date":          h.get("buy_date", ""),
+                        "Buy Date":          bd_val,
                         "Qty":               float(h.get("qty", 0)),
                         "Avg Cost (₹)":      float(h.get("avg_cost", 0)),
                         "Current Price (₹)": prices.get(sym, 0.0),
@@ -117,9 +137,9 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     column_config={
                         "☑":                 st.column_config.CheckboxColumn("☑", width="small"),
                         "Symbol":            st.column_config.TextColumn(),
-                        "Holding Type":      st.column_config.SelectboxColumn(options=["NRE", "NRO"]),
+                        "Holding Type":      st.column_config.SelectboxColumn(options=HOLDING_TYPES),
                         "Source":            st.column_config.SelectboxColumn(options=["Market", "IPO", "DAD"]),
-                        "Buy Date":          st.column_config.TextColumn(),
+                        "Buy Date":          st.column_config.DateColumn(format="DD-MMM-YYYY"),
                         "Qty":               st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                         "Avg Cost (₹)":      st.column_config.NumberColumn(format="%.2f", min_value=0.0),
                         "Current Price (₹)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
@@ -133,7 +153,8 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         holdings[i]["symbol"]       = str(edited.iloc[i]["Symbol"]).upper()
                         holdings[i]["holding_type"] = str(edited.iloc[i]["Holding Type"])
                         holdings[i]["source"]       = str(edited.iloc[i]["Source"])
-                        holdings[i]["buy_date"]     = str(edited.iloc[i]["Buy Date"])
+                        raw_bd = edited.iloc[i]["Buy Date"]
+                        holdings[i]["buy_date"] = raw_bd.isoformat() if isinstance(raw_bd, datetime.date) else (str(raw_bd)[:10] if raw_bd else "")
                         holdings[i]["qty"]          = float(edited.iloc[i]["Qty"])
                         holdings[i]["avg_cost"]     = float(edited.iloc[i]["Avg Cost (₹)"])
                         raw_price = edited.iloc[i]["Current Price (₹)"]
@@ -170,9 +191,9 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 co_name  = c2.text_input("Company Name")
                 symbol   = c3.text_input("NSE Symbol (e.g. RELIANCE)")
                 c4, c5, c6 = st.columns(3)
-                h_type   = c4.selectbox("Holding Type", ["NRE", "NRO"])
+                h_type   = c4.selectbox("Holding Type", HOLDING_TYPES)
                 source   = c5.selectbox("Source", ["Market", "IPO", "DAD"])
-                buy_date = c6.date_input("Buy Date", value=datetime.date.today())
+                buy_date = c6.date_input("Buy Date", value=datetime.date.today(), format="DD/MM/YYYY")
                 c7, c8 = st.columns(2)
                 qty      = c7.number_input("Quantity",     min_value=0.0, step=1.0,  format="%.4f")
                 avg_cost = c8.number_input("Avg Cost (₹)", min_value=0.0, step=0.01, format="%.2f")
@@ -204,15 +225,15 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     co_name  = c2.text_input("Company Name",  value=h.get("company_name",""))
                     symbol   = c3.text_input("Symbol",        value=h.get("symbol",""))
                     c4, c5, c6 = st.columns(3)
-                    h_type   = c4.selectbox("Holding Type", ["NRE","NRO"],
-                                            index=["NRE","NRO"].index(h.get("holding_type","NRE"))
-                                            if h.get("holding_type") in ["NRE","NRO"] else 0)
+                    h_type   = c4.selectbox("Holding Type", HOLDING_TYPES,
+                                            index=HOLDING_TYPES.index(h.get("holding_type","NRE"))
+                                            if h.get("holding_type") in HOLDING_TYPES else 0)
                     source   = c5.selectbox("Source", ["Market","IPO","DAD"],
                                             index=["Market","IPO","DAD"].index(h.get("source","Market"))
                                             if h.get("source") in ["Market","IPO","DAD"] else 0)
                     try:    bd = datetime.date.fromisoformat(h.get("buy_date","2024-01-01"))
                     except: bd = datetime.date.today()
-                    buy_date = c6.date_input("Buy Date", value=bd, key=f"edit_bd_{owner}")
+                    buy_date = c6.date_input("Buy Date", value=bd, format="DD/MM/YYYY", key=f"edit_bd_{owner}")
                     c7, c8 = st.columns(2)
                     qty      = c7.number_input("Quantity",     value=float(h.get("qty",0)),      min_value=0.0, step=1.0,  format="%.4f")
                     avg_cost = c8.number_input("Avg Cost (₹)", value=float(h.get("avg_cost",0)), min_value=0.0, step=0.01, format="%.2f")

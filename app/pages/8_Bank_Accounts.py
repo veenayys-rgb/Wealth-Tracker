@@ -3,10 +3,12 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+import datetime
 from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import get_forex
 from utils.config import load, save
+from utils.fmt    import fmt_date, parse_date
 
 st.set_page_config(page_title="Bank Accounts | Wealth Tracker", page_icon="🏦", layout="wide")
 st.title("🏦 Bank Accounts")
@@ -61,6 +63,7 @@ with tab_india:
                         "Owner":                _blank(b.get("owner")),
                         "2nd Holder":           _blank(b.get("second_holder")),
                         "Balance (₹)":          f"₹ {bal:,.2f}",
+                        "Balance as of":        fmt_date(b.get("balance_date", "")),
                     })
                 df = pd.DataFrame(rows)
                 edited = st.data_editor(
@@ -87,14 +90,16 @@ with tab_india:
                     qe_rows = [{"Bank": b.get("bank_name",""),
                                 "Account No.": b.get("account_no_last4", ""),
                                 "Currency": b.get("currency", "INR"),
-                                "Balance (₹)": float(b.get("balance", 0))} for b in subset]
+                                "Balance (₹)": float(b.get("balance", 0)),
+                                "Balance as of": parse_date(b.get("balance_date", ""))} for b in subset]
                     qe_ed = st.data_editor(
                         pd.DataFrame(qe_rows),
                         column_config={
-                            "Bank":        st.column_config.TextColumn(disabled=True),
-                            "Account No.": st.column_config.TextColumn(),
-                            "Currency":    st.column_config.SelectboxColumn(options=["INR", "USD", "GBP", "EUR", "Other"]),
-                            "Balance (₹)": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                            "Bank":           st.column_config.TextColumn(disabled=True),
+                            "Account No.":    st.column_config.TextColumn(),
+                            "Currency":       st.column_config.SelectboxColumn(options=["INR", "USD", "GBP", "EUR", "Other"]),
+                            "Balance (₹)":    st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                            "Balance as of":  st.column_config.DateColumn(format="DD-MMM-YYYY"),
                         },
                         hide_index=True, use_container_width=True, key=f"qe_india_{oi}",
                     )
@@ -103,6 +108,8 @@ with tab_india:
                             india[fi]["account_no_last4"] = str(qe_ed.iloc[j]["Account No."])
                             india[fi]["currency"]         = str(qe_ed.iloc[j]["Currency"])
                             india[fi]["balance"]          = float(qe_ed.iloc[j]["Balance (₹)"])
+                            raw_bd = qe_ed.iloc[j]["Balance as of"]
+                            india[fi]["balance_date"] = raw_bd.isoformat() if isinstance(raw_bd, datetime.date) else (str(raw_bd)[:10] if raw_bd else "")
                         save("bank_india.json", india)
                         st.success("✅ Balances saved.")
                         st.rerun()
@@ -127,7 +134,9 @@ with tab_india:
                     else:
                         owner = c5.selectbox("Owner", OWNERS)
                     second_holder = c6.text_input("2nd Account Holder (optional)")
-                    balance = st.number_input("Current Balance (₹)", min_value=0.0, step=100.0, format="%.2f")
+                    c7, c8 = st.columns(2)
+                    balance      = c7.number_input("Current Balance (₹)", min_value=0.0, step=100.0, format="%.2f")
+                    balance_date = c8.date_input("Balance as of", value=datetime.date.today(), format="DD/MM/YYYY")
                     if st.form_submit_button("Add Account"):
                         if not bank_name.strip():
                             st.error("Bank Name is required.")
@@ -140,6 +149,7 @@ with tab_india:
                                 "owner":            owner,
                                 "second_holder":    second_holder.strip(),
                                 "balance":          balance,
+                                "balance_date":     str(balance_date),
                             })
                             save("bank_india.json", india)
                             st.success(f"✅ {bank_name} ({account_type}) added.")
@@ -170,8 +180,12 @@ with tab_india:
                             oi2   = OWNERS.index(b.get("owner","Vinay")) if b.get("owner") in OWNERS else 0
                             owner = c5.selectbox("Owner", OWNERS, index=oi2)
                         second_holder = c6.text_input("2nd Account Holder", value=b.get("second_holder",""))
-                        balance = st.number_input("Current Balance (₹)", value=float(b.get("balance",0)),
-                                                  min_value=0.0, step=100.0, format="%.2f")
+                        c7, c8 = st.columns(2)
+                        balance      = c7.number_input("Current Balance (₹)", value=float(b.get("balance",0)),
+                                                       min_value=0.0, step=100.0, format="%.2f")
+                        balance_date = c8.date_input("Balance as of",
+                                                     value=parse_date(b.get("balance_date")) or datetime.date.today(),
+                                                     format="DD/MM/YYYY", key=f"edit_india_bd_{oi}")
                         if st.form_submit_button("Save Changes"):
                             india[fi] = {
                                 "bank_name":        bank_name.strip(),
@@ -181,6 +195,7 @@ with tab_india:
                                 "owner":            owner,
                                 "second_holder":    second_holder.strip(),
                                 "balance":          balance,
+                                "balance_date":     str(balance_date),
                             }
                             save("bank_india.json", india)
                             st.success("✅ Changes saved.")
@@ -214,6 +229,7 @@ with tab_uae:
                         "Owner":         _blank(b.get("owner")),
                         "Balance (FCY)": f"{bal:,.2f}",
                         "Equiv. INR":    f"₹ {equiv:,.2f}",
+                        "Balance as of": fmt_date(b.get("balance_date", "")),
                     })
                 df = pd.DataFrame(rows)
                 edited = st.data_editor(
@@ -240,14 +256,16 @@ with tab_uae:
                     qe_rows = [{"Bank": b.get("bank_name",""),
                                 "Account No.": b.get("account_no", ""),
                                 "Currency": b.get("currency", "AED"),
-                                "Balance (FCY)": float(b.get("balance_aed", 0))} for b in subset]
+                                "Balance (FCY)": float(b.get("balance_aed", 0)),
+                                "Balance as of": parse_date(b.get("balance_date", ""))} for b in subset]
                     qe_ed = st.data_editor(
                         pd.DataFrame(qe_rows),
                         column_config={
-                            "Bank":          st.column_config.TextColumn(disabled=True),
-                            "Account No.":   st.column_config.TextColumn(),
-                            "Currency":      st.column_config.SelectboxColumn(options=["AED", "USD", "EUR", "GBP", "Other"]),
-                            "Balance (FCY)": st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                            "Bank":           st.column_config.TextColumn(disabled=True),
+                            "Account No.":    st.column_config.TextColumn(),
+                            "Currency":       st.column_config.SelectboxColumn(options=["AED", "USD", "EUR", "GBP", "Other"]),
+                            "Balance (FCY)":  st.column_config.NumberColumn(format="%.2f", min_value=0.0),
+                            "Balance as of":  st.column_config.DateColumn(format="DD-MMM-YYYY"),
                         },
                         hide_index=True, use_container_width=True, key=f"qe_uae_{oi}",
                     )
@@ -256,6 +274,8 @@ with tab_uae:
                             uae[fi]["account_no"]  = str(qe_ed.iloc[j]["Account No."])
                             uae[fi]["currency"]    = str(qe_ed.iloc[j]["Currency"])
                             uae[fi]["balance_aed"] = float(qe_ed.iloc[j]["Balance (FCY)"])
+                            raw_bd = qe_ed.iloc[j]["Balance as of"]
+                            uae[fi]["balance_date"] = raw_bd.isoformat() if isinstance(raw_bd, datetime.date) else (str(raw_bd)[:10] if raw_bd else "")
                         save("bank_uae.json", uae)
                         st.success("✅ Balances saved.")
                         st.rerun()
@@ -279,7 +299,9 @@ with tab_uae:
                         owner = owner_filter
                     else:
                         owner = c5.selectbox("Owner", OWNERS)
-                    balance_aed  = c6.number_input("Balance (FCY)", min_value=0.0, step=100.0, format="%.2f")
+                    c7, c8 = st.columns(2)
+                    balance_aed  = c7.number_input("Balance (FCY)", min_value=0.0, step=100.0, format="%.2f")
+                    balance_date = c8.date_input("Balance as of", value=datetime.date.today(), format="DD/MM/YYYY")
                     if st.form_submit_button("Add Account"):
                         if not bank_name.strip():
                             st.error("Bank Name is required.")
@@ -291,6 +313,7 @@ with tab_uae:
                                 "account_no":   account_no.strip(),
                                 "owner":        owner,
                                 "balance_aed":  balance_aed,
+                                "balance_date": str(balance_date),
                             })
                             save("bank_uae.json", uae)
                             st.success(f"✅ {bank_name} added.")
@@ -322,8 +345,12 @@ with tab_uae:
                         else:
                             oi2   = OWNERS.index(b.get("owner","Vinay")) if b.get("owner") in OWNERS else 0
                             owner = c5.selectbox("Owner", OWNERS, index=oi2)
-                        balance_aed  = c6.number_input("Balance (AED)", value=float(b.get("balance_aed",0)),
+                        c7, c8 = st.columns(2)
+                        balance_aed  = c7.number_input("Balance (FCY)", value=float(b.get("balance_aed",0)),
                                                        min_value=0.0, step=100.0, format="%.2f")
+                        balance_date = c8.date_input("Balance as of",
+                                                     value=parse_date(b.get("balance_date")) or datetime.date.today(),
+                                                     format="DD/MM/YYYY", key=f"edit_uae_bd_{oi}")
                         if st.form_submit_button("Save Changes"):
                             uae[fi] = {
                                 "bank_name":    bank_name.strip(),
@@ -332,6 +359,7 @@ with tab_uae:
                                 "account_no":   account_no.strip(),
                                 "owner":        owner,
                                 "balance_aed":  balance_aed,
+                                "balance_date": str(balance_date),
                             }
                             save("bank_uae.json", uae)
                             st.success("✅ Changes saved.")

@@ -1,4 +1,4 @@
-"""Formatting helpers for Streamlit pages."""
+"""Formatting helpers for Streamlit pages."""  # noqa
 import math
 import datetime
 import pandas as pd

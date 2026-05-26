@@ -8,7 +8,45 @@ from utils.config import load
 SUFFIX = {"India": ".NS", "UAE": ".AD", "US": "", "UK": ".L", "Other": ""}
 
 
+_MOBILE_CSS = """
+<style>
+@media (max-width: 768px) {
+    /* Stack all st.columns vertically */
+    [data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    /* Remove wide-layout horizontal padding */
+    .block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        max-width: 100% !important;
+    }
+    /* Scrollable tab bar (don't wrap, just scroll) */
+    [data-testid="stTabs"] [role="tablist"] {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+    }
+    /* Scrollable data tables */
+    [data-testid="stDataFrame"] > div {
+        overflow-x: auto !important;
+    }
+    /* Wrap horizontal radio buttons (period selector) */
+    [data-testid="stRadio"] > div {
+        flex-wrap: wrap !important;
+    }
+    /* Slightly smaller metric text */
+    [data-testid="metric-container"] {
+        font-size: 0.85em !important;
+    }
+}
+</style>
+"""
+
+
 def render_sidebar():
+    st.markdown(_MOBILE_CSS, unsafe_allow_html=True)
     with st.sidebar:
         st.markdown("---")
         if st.button("🔄 Refresh Prices", use_container_width=True, type="primary"):
@@ -107,12 +145,18 @@ def render_sidebar():
                                                           "date": parts[5].strip()}
                                 except (ValueError, IndexError):
                                     pass
+                            def _iso(s):
+                                try:
+                                    return datetime.datetime.strptime(s.strip(), "%d-%b-%Y").strftime("%Y-%m-%d")
+                                except ValueError:
+                                    return s.strip()
+
                             mf_rows = []
                             for isin in all_isins:
                                 if isin in amfi:
                                     d = amfi[isin]
                                     mf_rows.append({"isin": isin, "nav": d["nav"],
-                                                    "nav_date": d["date"], "amfi_name": d["name"],
+                                                    "nav_date": _iso(d["date"]), "amfi_name": d["name"],
                                                     "fetched_at": datetime.datetime.utcnow().isoformat()})
                             if mf_rows:
                                 service_upsert("mf_navs", mf_rows, conflict_col="isin")

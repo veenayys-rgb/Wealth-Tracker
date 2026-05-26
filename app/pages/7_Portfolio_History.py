@@ -7,7 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 import plotly.graph_objects as go
 from utils.db  import fetch, service_delete
-from utils.fmt import ind_num
+from utils.fmt import ind_num, indian_axis_ticks
 
 st.set_page_config(page_title="Portfolio History | Wealth Tracker", page_icon="📅", layout="wide")
 st.title("📅 Portfolio History")
@@ -75,13 +75,14 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date", tab_key=""):
 
         y_min = min(inv_vals.min(), cv_vals.min()) * 0.995
         y_max = max(inv_vals.max(), cv_vals.max()) * 1.005
+        tickvals, ticktext = indian_axis_ticks(y_min, y_max)
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(x=dates, y=inv_vals, mode="lines+markers",
                                        name="Invested", line=dict(color="#636EFA", width=2)))
         fig_trend.add_trace(go.Scatter(x=dates, y=cv_vals,  mode="lines+markers",
                                        name="Current Value", line=dict(color="#00CC96", width=2)))
         fig_trend.update_layout(
-            yaxis=dict(range=[y_min, y_max], tickformat=",.0f"),
+            yaxis=dict(range=[y_min, y_max], tickvals=tickvals, ticktext=ticktext),
             xaxis=dict(title="Date"),
             hovermode="x unified", height=380,
             margin=dict(l=0, r=0, t=10, b=0),

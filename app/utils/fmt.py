@@ -43,19 +43,44 @@ def ind_num(n, prefix="₹ ", decimals=2) -> str:
     neg = n < 0
     n = abs(n)
     fmt = f"{n:.{decimals}f}"
-    int_p, dec_p = fmt.split(".")
+    parts = fmt.split(".")
+    int_p = parts[0]
+    dec_p = parts[1] if len(parts) > 1 else ""
     if len(int_p) <= 3:
         grouped = int_p
     else:
         last3 = int_p[-3:]
         rest = int_p[:-3]
-        parts = []
+        grp = []
         while rest:
-            parts.insert(0, rest[-2:] if len(rest) >= 2 else rest)
+            grp.insert(0, rest[-2:] if len(rest) >= 2 else rest)
             rest = rest[:-2]
-        grouped = ",".join(parts) + "," + last3
-    result = f"{prefix}{grouped}.{dec_p}"
+        grouped = ",".join(grp) + "," + last3
+    result = f"{prefix}{grouped}.{dec_p}" if dec_p else f"{prefix}{grouped}"
     return f"-{result}" if neg else result
+
+
+def indian_axis_ticks(y_min: float, y_max: float, n: int = 6):
+    """Return (tickvals, ticktext) for a Plotly y-axis formatted in the Indian number system.
+
+    Generates ~n evenly-spaced, nicely-rounded tick values between y_min and y_max
+    and labels each one with ind_num(..., decimals=0).
+    """
+    if y_max <= y_min:
+        return [y_min, y_max], [ind_num(y_min, decimals=0), ind_num(y_max, decimals=0)]
+    span = y_max - y_min
+    raw_step = span / max(n - 1, 1)
+    mag = 10 ** math.floor(math.log10(raw_step))
+    step = min([1, 2, 2.5, 5, 10], key=lambda x: abs(x * mag - raw_step)) * mag
+    start = math.floor(y_min / step) * step
+    ticks, t = [], start
+    while t <= y_max + step * 0.01:
+        if t >= y_min - step * 0.01:
+            ticks.append(round(t, 10))
+        t += step
+    if not ticks:
+        ticks = [y_min, y_max]
+    return ticks, [ind_num(t, decimals=0) for t in ticks]
 
 
 def plain_num(n, decimals=2) -> str:

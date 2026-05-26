@@ -8,7 +8,7 @@ import pandas as pd
 import datetime, urllib.request, ssl
 from utils.db     import fetch, service_upsert
 from utils.config import load, save
-from utils.fmt    import ind_num, total_metrics
+from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date
 
 AMFI_URL = "https://www.amfiindia.com/spages/NAVAll.txt"
 
@@ -39,6 +39,13 @@ def refresh_navs_from_amfi(isins: list[str]) -> tuple[int, int]:
         except (ValueError, IndexError):
             pass
 
+    def _amfi_date_to_iso(s: str) -> str:
+        """Convert AMFI date DD-MMM-YYYY → YYYY-MM-DD (ISO). Returns original on failure."""
+        try:
+            return datetime.datetime.strptime(s.strip(), "%d-%b-%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            return s.strip()
+
     rows, missing = [], []
     for isin in isins:
         if isin in amfi_index:
@@ -46,7 +53,7 @@ def refresh_navs_from_amfi(isins: list[str]) -> tuple[int, int]:
             rows.append({
                 "isin":       isin,
                 "nav":        d["nav"],
-                "nav_date":   d["date"],
+                "nav_date":   _amfi_date_to_iso(d["date"]),
                 "amfi_name":  d["name"],
                 "fetched_at": datetime.datetime.utcnow().isoformat(),
             })
@@ -68,9 +75,11 @@ OWNERS = [
     ("Mom",    "mom_mutual_funds.json"),
 ]
 
-navs      = {r["isin"]: r for r in fetch("mf_navs")}
-nav_dates = list({r["nav_date"] for r in navs.values() if r.get("nav_date")})
-nav_date  = nav_dates[0] if nav_dates else "—"
+navs = {r["isin"]: r for r in fetch("mf_navs")}
+# Pick the most recent nav_date across all funds
+_dated = [(parse_date(r["nav_date"]), r["nav_date"]) for r in navs.values() if r.get("nav_date")]
+_dated = [(d, s) for d, s in _dated if d is not None]
+nav_date = fmt_date(max(_dated, key=lambda x: x[0])[1]) if _dated else "—"
 
 hdr_col, btn_col = st.columns([4, 1])
 hdr_col.caption(f"NAV Date: {nav_date}")

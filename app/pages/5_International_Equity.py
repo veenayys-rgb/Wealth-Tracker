@@ -7,7 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, get_forex, service_upsert
 from utils.config import load, save
-from utils.fmt    import ind_num, plain_num, total_metrics, fmt_date, parse_date
+from utils.fmt    import ind_num, plain_num, total_metrics, fmt_date, parse_date, utc_to_ist
 
 st.set_page_config(page_title="International Equity | Wealth Tracker", page_icon="🌍", layout="wide")
 st.title("🌍 International Equity")
@@ -18,8 +18,8 @@ aed          = forex.get("AED_INR", 0)
 usd          = forex.get("USD_INR", 0)
 prices_rows  = fetch("equity_international_prices")
 prices       = {r["symbol"]: float(r["price"]) for r in prices_rows}
-last_fetch   = prices_rows[0]["fetched_at"][:19].replace("T", " ") if prices_rows else "—"
-st.caption(f"Last fetched: {last_fetch} UTC  |  AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
+last_fetch   = utc_to_ist(max((r["fetched_at"] for r in prices_rows), default=None)) if prices_rows else "—"
+st.caption(f"Last fetched: {last_fetch}  |  AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
 
 REGIONS    = ["UAE", "US", "UK", "Other"]
 CURRENCIES = ["AED", "USD", "GBP", "EUR", "Other"]

@@ -180,18 +180,18 @@ def render_sidebar():
                             pass
                         time.sleep(0.3)
 
-                    # India Equity — NSE batch, then BSE fallback for misses
+                    # India Equity — NSE batch (5d), then individual NSE/BSE fallback
                     holdings_eq = load("equity_india.json")
                     if holdings_eq:
                         syms = list({h["symbol"].upper() for h in holdings_eq if h.get("symbol","").strip()})
                         ssl._create_default_https_context = ssl._create_unverified_context
-                        eq_rows   = []
-                        nse_miss  = []
+                        eq_rows  = []
+                        nse_miss = []
 
-                        # ── NSE batch ──────────────────────────────────────────
+                        # ── NSE batch (5d gives more headroom than 2d) ─────────
                         nse_tickers = [f"{s}.NS" for s in syms]
                         try:
-                            raw   = yf.download(nse_tickers, period="2d", auto_adjust=True,
+                            raw   = yf.download(nse_tickers, period="5d", auto_adjust=True,
                                                 progress=False, group_by="ticker", threads=True)
                             multi = len(nse_tickers) > 1
                             for s, t in zip(syms, nse_tickers):
@@ -206,18 +206,24 @@ def render_sidebar():
                                 except Exception:
                                     nse_miss.append(s)
                         except Exception:
-                            nse_miss = syms   # full batch failed — retry all via BSE
+                            nse_miss = syms   # full batch failed — retry all individually
 
-                        # ── BSE individual fallback ────────────────────────────
+                        # ── Individual fallback: NSE fast_info → BSE fast_info ─
                         for s in nse_miss:
-                            try:
-                                info  = yf.Ticker(f"{s}.BO").fast_info
-                                price = getattr(info, "last_price", None)
-                                if price and float(price) > 0:
-                                    eq_rows.append({"symbol": s, "price": round(float(price), 4),
-                                                    "fetched_at": datetime.datetime.utcnow().isoformat()})
-                            except Exception:
-                                pass
+                            price = 0.0
+                            for suffix in [".NS", ".BO"]:
+                                try:
+                                    info  = yf.Ticker(f"{s}{suffix}").fast_info
+                                    p     = getattr(info, "last_price", None)
+                                    if p and float(p) > 0:
+                                        price = round(float(p), 4)
+                                        break
+                                except Exception:
+                                    pass
+                                time.sleep(0.2)
+                            if price > 0:
+                                eq_rows.append({"symbol": s, "price": price,
+                                                "fetched_at": datetime.datetime.utcnow().isoformat()})
                             time.sleep(0.3)
 
                         if eq_rows:

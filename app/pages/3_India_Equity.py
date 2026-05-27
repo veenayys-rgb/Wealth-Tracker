@@ -7,7 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch, service_upsert
 from utils.config import load, save
-from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date
+from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date, utc_to_ist
 
 st.set_page_config(page_title="India Equity | Wealth Tracker", page_icon="📈", layout="wide")
 st.title("📈 India Equity")
@@ -15,8 +15,8 @@ render_sidebar()
 
 prices_rows = fetch("equity_india_prices")
 prices      = {r["symbol"]: float(r["price"]) for r in prices_rows}
-last_fetch  = prices_rows[0]["fetched_at"][:19].replace("T", " ") if prices_rows else "—"
-st.caption(f"Last fetched: {last_fetch} UTC")
+last_fetch  = utc_to_ist(max((r["fetched_at"] for r in prices_rows), default=None)) if prices_rows else "—"
+st.caption(f"Last fetched: {last_fetch}")
 
 HOLDING_TYPES = ["NRE", "NRO", "Resident"]
 

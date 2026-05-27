@@ -7,6 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.db     import fetch
 from utils.config import load, save
+from utils.fmt    import utc_to_ist
 
 st.set_page_config(page_title="Watchlist | Wealth Tracker", page_icon="👀", layout="wide")
 st.title("👀 Watchlist")
@@ -14,8 +15,8 @@ render_sidebar()
 
 wp        = {r["symbol"]: r for r in fetch("watchlist_prices")}
 items     = load("watchlist.json")
-last_fetch = list(wp.values())[0]["fetched_at"][:19].replace("T", " ") if wp else "—"
-st.caption(f"Last fetched: {last_fetch} UTC")
+last_fetch = utc_to_ist(max((r["fetched_at"] for r in wp.values()), default=None)) if wp else "—"
+st.caption(f"Last fetched: {last_fetch}")
 
 if items:
     rows = []

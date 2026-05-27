@@ -8,7 +8,7 @@ from db import upsert, fetch_cfg
 AMFI_URL = "https://www.amfiindia.com/spages/NAVAll.txt"
 
 
-def fetch_amfi_navs():
+def fetch_amfi_navs() -> tuple[int, int]:
     # Collect all unique ISINs from Supabase cfg_mutual_funds
     all_isins: dict[str, str] = {}   # isin → fund_name
     for h in fetch_cfg("cfg_mutual_funds"):
@@ -18,7 +18,7 @@ def fetch_amfi_navs():
 
     if not all_isins:
         print("   ℹ️   No MF ISINs found — skipping")
-        return
+        return 0, 0
 
     print(f"\n📡  MF/ETF NAVs — {len(all_isins)} ISINs via AMFI…")
 
@@ -32,7 +32,7 @@ def fetch_amfi_navs():
         print(f"   ✅  {len(lines):,} lines from AMFI")
     except Exception as e:
         print(f"   ❌  AMFI download failed: {e}")
-        return
+        return 0, len(all_isins)
 
     # Build ISIN → {nav, name, date} index
     amfi_index: dict[str, dict] = {}
@@ -71,3 +71,4 @@ def fetch_amfi_navs():
 
     upsert("mf_navs", rows, conflict_col="isin")
     print(f"   💾  {ok}/{len(all_isins)} NAVs saved | {failed} not found")
+    return ok, len(all_isins)

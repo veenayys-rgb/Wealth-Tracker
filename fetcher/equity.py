@@ -68,17 +68,19 @@ def individual_fetch(sym: str, suffixes: list[str]) -> dict | None:
 
 # ── India Equity ──────────────────────────────────────────────────────────────
 
-def fetch_india():
+def fetch_india() -> tuple[int, int]:
+    """Returns (saved, total) count."""
     holdings = fetch_cfg("cfg_equity_india")
     if not holdings:
-        print("   ℹ️   equity_india.json empty — skipping")
-        return
+        print("   ℹ️   cfg_equity_india empty — skipping")
+        return 0, 0
 
-    symbols = [h["symbol"].upper() for h in holdings]
+    symbols = list({h["symbol"].upper() for h in holdings if h.get("symbol")})
     nse_tickers = [f"{s}.NS" for s in symbols]
 
     print(f"\n📡  India Equity — batch NSE ({len(symbols)} stocks)…")
-    fetched = batch_download(nse_tickers, period="1y")
+    # Use 5d (not 1y) — we only need the latest close price; lighter request
+    fetched = batch_download(nse_tickers, period="5d")
 
     rows = []
     failed = []
@@ -102,13 +104,13 @@ def fetch_india():
         else:
             print(f"   ❌  {sym:<18} Not found")
 
-    # Deduplicate by symbol — keep last price fetched
     seen = {}
     for r in rows:
         seen[r["symbol"]] = r
     rows = list(seen.values())
     upsert("equity_india_prices", rows, conflict_col="symbol")
     print(f"   💾  {len(rows)}/{len(symbols)} India prices saved to Supabase")
+    return len(rows), len(symbols)
 
 
 # ── International Equity ──────────────────────────────────────────────────────

@@ -17,8 +17,10 @@ forex = get_forex()
 usd   = forex.get("USD_INR", 0)
 
 # ── Compute totals ─────────────────────────────────────────────────────────────
-prices = {r["symbol"]: float(r["price"]) for r in fetch("equity_india_prices")}
-navs   = {r["isin"]:   float(r["nav"])   for r in fetch("mf_navs")}
+eq_rows  = {r["symbol"]: r for r in fetch("equity_india_prices")}
+nav_rows = {r["isin"]:   r for r in fetch("mf_navs")}
+prices   = {sym: float(r["price"]) for sym, r in eq_rows.items()  if r.get("price")}
+navs     = {isn: float(r["nav"])   for isn, r in nav_rows.items() if r.get("nav")}
 
 eq_inv = eq_cv = 0.0
 for h in load("mom_equity_india.json"):
@@ -37,19 +39,42 @@ for h in load("mom_mutual_funds.json"):
     mf_cv  += units * nav if nav > 0 else units * anav
 
 bank_cv = sum(float(b.get("balance", 0)) for b in load("mom_bank_india.json"))
+fd_cv   = sum(float(fd.get("amount", 0)) for fd in load("mom_fixed_deposits.json"))
 
-fd_cv = sum(float(fd.get("amount", 0)) for fd in load("mom_fixed_deposits.json"))
+# Day G/L — equity + MF
+day_gl = 0.0
+invest_cv = 0.0
+for h in load("mom_equity_india.json"):
+    sym   = h.get("symbol", "").upper()
+    qty   = float(h.get("qty", 0))
+    r     = eq_rows.get(sym, {})
+    price = float(r["price"])      if r.get("price")      else 0.0
+    prev  = float(r["prev_price"]) if r.get("prev_price") else 0.0
+    invest_cv += qty * price if price > 0 else 0.0
+    if price > 0 and prev > 0:
+        day_gl += (price - prev) * qty
+for h in load("mom_mutual_funds.json"):
+    isin  = h.get("isin", "").upper()
+    units = float(h.get("units", 0))
+    n     = nav_rows.get(isin, {})
+    nav   = float(n["nav"])      if n.get("nav")      else 0.0
+    prev  = float(n["prev_nav"]) if n.get("prev_nav") else 0.0
+    invest_cv += units * nav if nav > 0 else 0.0
+    if nav > 0 and prev > 0:
+        day_gl += (nav - prev) * units
 
 total_inv = eq_inv + mf_inv
 total_cv  = eq_cv + mf_cv + bank_cv + fd_cv
 gain      = total_cv - total_inv
-ret_pct   = (gain / total_inv * 100) if total_inv > 0 else 0
+ret_pct   = (gain  / total_inv  * 100) if total_inv  > 0 else 0
+day_pct   = (day_gl / invest_cv * 100) if invest_cv > 0 else 0
 
 # ── Summary cards ──────────────────────────────────────────────────────────────
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 c1.markdown(metric_card("Total Net Worth", ind_num(total_cv)),  unsafe_allow_html=True)
 c2.markdown(metric_card("Total Invested",  ind_num(total_inv)), unsafe_allow_html=True)
 c3.markdown(metric_card("Gain / Loss",     ind_num(gain), delta=pct(ret_pct)), unsafe_allow_html=True)
+c4.markdown(metric_card("Today's G/L",     ind_num(day_gl), delta=pct(day_pct)), unsafe_allow_html=True)
 
 st.divider()
 

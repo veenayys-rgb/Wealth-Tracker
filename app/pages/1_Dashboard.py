@@ -106,6 +106,56 @@ def insurance_surrender_inr() -> float:
     return round(total, 2)
 
 
+def day_gl_family() -> tuple[float, float]:
+    """Today's G/L for Family (Vinay+Harsh+Anusha) across equity+intl+MF.
+    Returns (day_gl, invest_cv) where invest_cv is eq+intl+MF current value."""
+    day_gl = 0.0
+    inv_cv = 0.0
+
+    # India equity
+    eq_rows = {r["symbol"]: r for r in fetch("equity_india_prices")}
+    for h in load("equity_india.json"):
+        if h.get("owner") and h["owner"] not in _FAMILY:
+            continue
+        sym   = h["symbol"].upper()
+        qty   = float(h.get("qty", 0))
+        r     = eq_rows.get(sym, {})
+        price = float(r["price"])      if r.get("price")      else 0.0
+        prev  = float(r["prev_price"]) if r.get("prev_price") else 0.0
+        inv_cv += qty * price if price > 0 else 0.0
+        if price > 0 and prev > 0:
+            day_gl += (price - prev) * qty
+
+    # International equity
+    intl_rows = {r["symbol"]: r for r in fetch("equity_international_prices")}
+    for h in load("equity_international.json"):
+        sym   = h["symbol"].upper()
+        qty   = float(h.get("qty", 0))
+        curr  = h.get("currency", "USD")
+        rate  = aed if curr == "AED" else usd
+        r     = intl_rows.get(sym, {})
+        price = float(r["price"])      if r.get("price")      else 0.0
+        prev  = float(r["prev_price"]) if r.get("prev_price") else 0.0
+        inv_cv += qty * price * rate if price > 0 else 0.0
+        if price > 0 and prev > 0:
+            day_gl += (price - prev) * qty * rate
+
+    # Mutual Funds
+    nav_rows = {r["isin"]: r for r in fetch("mf_navs")}
+    for fname in ["mutual_funds_vinay.json", "mutual_funds_harsh.json", "mutual_funds_anusha.json"]:
+        for h in load(fname):
+            isin  = h.get("isin", "").upper()
+            units = float(h.get("units", 0))
+            n     = nav_rows.get(isin, {})
+            nav   = float(n["nav"])      if n.get("nav")      else 0.0
+            prev  = float(n["prev_nav"]) if n.get("prev_nav") else 0.0
+            inv_cv += units * nav if nav > 0 else 0.0
+            if nav > 0 and prev > 0:
+                day_gl += (nav - prev) * units
+
+    return round(day_gl, 2), round(inv_cv, 2)
+
+
 eq_inv,  eq_cv    = eq_india_totals()
 mf_v_inv, mf_v_cv = mf_totals("mutual_funds_vinay.json")
 mf_h_inv, mf_h_cv = mf_totals("mutual_funds_harsh.json")
@@ -114,17 +164,20 @@ intl_inv, intl_cv  = intl_totals()
 bank_cv            = bank_total_inr()
 fd_cv              = fd_total_inr()
 ins_cv             = insurance_surrender_inr()
+day_gl, invest_cv  = day_gl_family()
 
 total_inv = eq_inv + mf_v_inv + mf_h_inv + mf_a_inv + intl_inv
 total_cv  = eq_cv  + mf_v_cv  + mf_h_cv  + mf_a_cv  + intl_cv + bank_cv + fd_cv + ins_cv
 gain      = total_cv - total_inv
 ret_pct   = (gain / total_inv * 100) if total_inv > 0 else 0
+day_pct   = (day_gl / invest_cv * 100) if invest_cv > 0 else 0
 
 # ── Summary cards ─────────────────────────────────────────────────────────────
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 c1.markdown(metric_card("Total Net Worth",  ind_num(total_cv)),  unsafe_allow_html=True)
 c2.markdown(metric_card("Total Invested",   ind_num(total_inv)), unsafe_allow_html=True)
 c3.markdown(metric_card("Gain / Loss",      ind_num(gain), delta=pct(ret_pct)), unsafe_allow_html=True)
+c4.markdown(metric_card("Today's G/L",      ind_num(day_gl), delta=pct(day_pct)), unsafe_allow_html=True)
 
 st.divider()
 

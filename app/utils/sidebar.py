@@ -1,4 +1,4 @@
-"""Shared sidebar — Refresh Prices button shown on every page."""
+"""Shared sidebar — Refresh Prices button + page-scoped refresh helpers."""
 import datetime, time, ssl, urllib.request
 import streamlit as st
 import yfinance as yf

@@ -1,4 +1,4 @@
-"""Supabase clients for Streamlit app."""
+"""Supabase clients for Streamlit app."""  # noqa
 import streamlit as st
 from supabase import create_client, Client
 

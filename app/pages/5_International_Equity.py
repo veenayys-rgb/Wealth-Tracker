@@ -3,7 +3,7 @@ import sys, os, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-from utils.sidebar import render_sidebar
+from utils.sidebar import render_sidebar, refresh_intl_equity_prices
 import pandas as pd
 from utils.db     import fetch, get_forex, service_upsert
 from utils.config import load, save
@@ -17,9 +17,22 @@ forex        = get_forex()
 aed          = forex.get("AED_INR", 0)
 usd          = forex.get("USD_INR", 0)
 prices_rows  = fetch("equity_international_prices")
-prices       = {r["symbol"]: float(r["price"]) for r in prices_rows}
+prices       = {r["symbol"]: float(r["price"])      for r in prices_rows if r.get("price")}
+prev_prices  = {r["symbol"]: float(r["prev_price"]) for r in prices_rows if r.get("prev_price")}
 last_fetch   = utc_to_ist(max((r["fetched_at"] for r in prices_rows), default=None)) if prices_rows else "—"
-st.caption(f"Last fetched: {last_fetch}  |  AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
+prev_dates_i = [r["prev_price_date"] for r in prices_rows if r.get("prev_price_date")]
+prev_label_i = fmt_date(max(prev_dates_i)) if prev_dates_i else "—"
+
+# ── Refresh button ──────────────────────────────────────────────────────────
+_rc, _cc = st.columns([1, 4])
+with _rc:
+    if st.button("🔄 Refresh Prices", key="refresh_intl_eq", use_container_width=True):
+        with st.spinner("Fetching international equity prices…"):
+            _saved, _total = refresh_intl_equity_prices()
+        st.success(f"✅ {_saved}/{_total} prices updated")
+        st.rerun()
+_cc.caption(f"Last fetched: {last_fetch}  |  Prev Close: {prev_label_i}  "
+            f"|  AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
 
 REGIONS    = ["UAE", "US", "UK", "Other"]
 CURRENCIES = ["AED", "USD", "GBP", "EUR", "Other"]
@@ -41,15 +54,322 @@ all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
 owner_tabs = all_tabs[:len(OWNERS)]
 tab_all    = all_tabs[-1]
 
+
+def _day_view_intl(dv_holdings, show_owner: str | None = None):
+    """Render Day View table for international equity holdings."""
+    if not dv_holdings:
+        st.info("No holdings found.")
+        return
+    rows = []
+    for h in dv_holdings:
+        sym            = h["symbol"].upper()
+        qty            = float(h.get("qty", 0))
+        avg_cost       = float(h.get("avg_cost", 0))
+        curr           = h.get("currency", "USD")
+        rate           = fx_rate(curr)
+        price_fcy      = prices.get(sym, 0)
+        prev_price_fcy = prev_prices.get(sym, 0)
+        invested       = qty * avg_cost * rate
+        value          = qty * price_fcy * rate if price_fcy > 0 else invested
+        gl             = value - invested
+        day_gl         = (price_fcy - prev_price_fcy) * qty * rate \
+                         if price_fcy > 0 and prev_price_fcy > 0 else None
+        day_pct        = ((price_fcy - prev_price_fcy) / prev_price_fcy * 100) \
+                         if price_fcy > 0 and prev_price_fcy > 0 else None
+        row = {
+            "Company":    h.get("name") or sym,
+            "Ccy":        curr,
+            "Qty":        qty,
+            "Invested":   invested,
+            "Price":      price_fcy      if price_fcy      > 0 else None,
+            "Value":      value,
+            "G/L":        gl,
+            "Prev Close": prev_price_fcy if prev_price_fcy > 0 else None,
+            "Day G/L":    day_gl,
+            "Day %":      day_pct,
+        }
+        if show_owner:
+            row = {"Owner": show_owner, **row}
+        rows.append(row)
+
+    df_dv    = pd.DataFrame(rows).sort_values("Day %", ascending=False, na_position="last")
+    inr_cols = ["Invested", "Value", "G/L", "Day G/L"]
+    fcy_cols = ["Price", "Prev Close"]
+    fmt_dv   = {c: (lambda v: ind_num(v)   if v is not None else "—") for c in inr_cols}
+    fmt_dv.update({c: (lambda v: plain_num(v) if v is not None else "—") for c in fcy_cols})
+    fmt_dv["Qty"]   = lambda v: f"{v:,.4f}" if v is not None else "—"
+    fmt_dv["Day %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
+
+    col_cfg = {
+        "Company":    st.column_config.TextColumn("Company",    width="large"),
+        "Ccy":        st.column_config.TextColumn("Ccy",        width="small"),
+        "Qty":        st.column_config.TextColumn("Qty",        width="small"),
+        "Invested":   st.column_config.TextColumn("Invested",   width="medium"),
+        "Price":      st.column_config.TextColumn("Price",      width="medium"),
+        "Value":      st.column_config.TextColumn("Value",      width="medium"),
+        "G/L":        st.column_config.TextColumn("G/L",        width="medium"),
+        "Prev Close": st.column_config.TextColumn("Prev Close", width="medium"),
+        "Day G/L":    st.column_config.TextColumn("Day G/L",    width="medium"),
+        "Day %":      st.column_config.TextColumn("Day %",      width="small"),
+    }
+    if show_owner:
+        col_cfg = {"Owner": st.column_config.TextColumn("Owner", width="small"), **col_cfg}
+
+    st.dataframe(
+        df_dv.style.format(fmt_dv)
+             .map(lambda v: "color:green" if isinstance(v, float) and v >= 0
+                       else "color:red"   if isinstance(v, float) and v <  0
+                       else "", subset=["G/L", "Day G/L", "Day %"]),
+        use_container_width=True, hide_index=True, column_config=col_cfg,
+    )
+    total_inv = sum(r["Invested"] for r in rows)
+    total_val = sum(r["Value"]    for r in rows)
+    total_gl  = total_val - total_inv
+    total_dgl = sum(r["Day G/L"] for r in rows if r["Day G/L"] is not None)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Invested", ind_num(total_inv))
+    c2.metric("Value",    ind_num(total_val))
+    c3.metric("G/L",      ind_num(total_gl))
+    c4.metric("Day G/L",  ind_num(total_dgl),
+              delta=f"{(total_dgl/total_val*100):+.2f}%" if total_val > 0 else None)
+
+
+# ── Per-owner tabs ─────────────────────────────────────────────────────────────
 for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings = load(fname)
+        sub_h, sub_d = st.tabs(["📋 Holdings", "📊 Day View"])
 
-        # ── Display table ─────────────────────────────────────────────────────
-        if holdings:
-            total_inv = total_cv = 0.0
-            rows = []
-            for h in holdings:
+        # ── Holdings ──────────────────────────────────────────────────────────
+        with sub_h:
+            if holdings:
+                total_inv = total_cv = 0.0
+                rows = []
+                for h in holdings:
+                    sym     = h["symbol"].upper()
+                    qty     = float(h.get("qty", 0))
+                    cost    = float(h.get("avg_cost", 0))
+                    curr    = h.get("currency", "USD")
+                    rate    = fx_rate(curr)
+                    price   = prices.get(sym, 0)
+                    inv_f   = qty * cost
+                    cv_f    = qty * price if price > 0 else inv_f
+                    inv_inr = inv_f * rate
+                    cv_inr  = cv_f  * rate
+                    gl_inr  = cv_inr - inv_inr
+                    ret     = (gl_inr / inv_inr * 100) if inv_inr > 0 else 0.0
+                    total_inv += inv_inr
+                    total_cv  += cv_inr
+                    rows.append({
+                        "Company Name":        h.get("name", "") or "—",
+                        "Qty":                 qty,
+                        "Avg Cost (FCY)":      cost,
+                        "Invested (FCY)":      inv_f,
+                        "Current Price (FCY)": price if price > 0 else None,
+                        "Current Value (FCY)": cv_f,
+                        "Forex Rate":          rate,
+                        "Invested (INR)":      inv_inr,
+                        "Current Value (INR)": cv_inr,
+                        "Gain/Loss (INR)":     gl_inr,
+                        "Return %":            ret,
+                        "% of Portfolio":      0.0,
+                        "Symbol":              sym,
+                        "ISIN":                h.get("isin", "") or "—",
+                        "Region":              h.get("region", "") or "—",
+                        "Exchange":            h.get("exchange", "") or "—",
+                        "Currency":            curr,
+                        "Source":              h.get("source", "") or "—",
+                        "Buy Date":            fmt_date(h.get("buy_date", "")),
+                    })
+                total_cv_safe = total_cv if total_cv > 0 else 1.0
+                for r in rows:
+                    r["% of Portfolio"] = r["Current Value (INR)"] / total_cv_safe * 100
+                df  = pd.DataFrame(rows)
+                fmt = {
+                    "Qty":                 lambda v: f"{v:,.0f}" if v is not None else "—",
+                    "Avg Cost (FCY)":      lambda v: plain_num(v, decimals=4) if v is not None else "—",
+                    "Invested (FCY)":      lambda v: plain_num(v) if v is not None else "—",
+                    "Current Price (FCY)": lambda v: plain_num(v, decimals=4) if v is not None else "—",
+                    "Current Value (FCY)": lambda v: plain_num(v) if v is not None else "—",
+                    "Forex Rate":          lambda v: f"{v:.4f}" if v is not None else "—",
+                    "Invested (INR)":      lambda v: ind_num(v),
+                    "Current Value (INR)": lambda v: ind_num(v),
+                    "Gain/Loss (INR)":     lambda v: ind_num(v),
+                    "Return %":            lambda v: f"{v:+.2f}%" if v is not None else "—",
+                    "% of Portfolio":      lambda v: f"{v:.2f}%" if v is not None else "—",
+                }
+                st.dataframe(
+                    df.style
+                      .format(fmt)
+                      .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                                     "color:red"   if isinstance(v, float) and v <  0 else "",
+                           subset=["Gain/Loss (INR)", "Return %"]),
+                    use_container_width=True, hide_index=True,
+                )
+                total_metrics(total_inv, total_cv)
+            else:
+                st.info(f"No international holdings for {owner} yet. Add below.")
+
+            st.divider()
+
+            # ── Quick Edit ────────────────────────────────────────────────
+            if holdings:
+                with st.expander("✏️ Quick Edit"):
+                    qe_rows = []
+                    for h in holdings:
+                        sym = h["symbol"].upper()
+                        qe_rows.append({
+                            "☑":                 False,
+                            "Symbol":              sym,
+                            "Company Name":        h.get("name", "") or "—",
+                            "Source":              h.get("source", "Market"),
+                            "Buy Date":            parse_date(h.get("buy_date", "")),
+                            "Qty":                 float(h.get("qty", 0)),
+                            "Avg Cost (FCY)":      float(h.get("avg_cost", 0)),
+                            "Current Price (FCY)": prices.get(sym, 0.0),
+                        })
+                    edited = st.data_editor(
+                        pd.DataFrame(qe_rows),
+                        column_config={
+                            "☑":                 st.column_config.CheckboxColumn("☑", width="small"),
+                            "Symbol":              st.column_config.TextColumn(),
+                            "Company Name":        st.column_config.TextColumn(width="medium"),
+                            "Source":              st.column_config.SelectboxColumn(options=SOURCES),
+                            "Buy Date":            st.column_config.DateColumn(format="DD-MMM-YYYY"),
+                            "Qty":                 st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                            "Avg Cost (FCY)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                            "Current Price (FCY)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                        },
+                        hide_index=True, use_container_width=True, key=f"qe_intl_{owner}",
+                    )
+                    bc1, bc2 = st.columns(2)
+                    if bc1.button("💾 Save Changes", key=f"qsave_intl_{owner}"):
+                        price_rows = []
+                        for i in range(len(holdings)):
+                            holdings[i]["symbol"] = str(edited.iloc[i]["Symbol"]).upper()
+                            holdings[i]["name"]   = str(edited.iloc[i]["Company Name"])
+                            holdings[i]["source"] = str(edited.iloc[i]["Source"])
+                            raw_bd = edited.iloc[i]["Buy Date"]
+                            holdings[i]["buy_date"] = (raw_bd.isoformat() if isinstance(raw_bd, datetime.date)
+                                                       else (str(raw_bd)[:10] if raw_bd else ""))
+                            holdings[i]["qty"]      = float(edited.iloc[i]["Qty"])
+                            holdings[i]["avg_cost"] = float(edited.iloc[i]["Avg Cost (FCY)"])
+                            new_price = float(edited.iloc[i]["Current Price (FCY)"] or 0)
+                            if new_price > 0:
+                                price_rows.append({"symbol": holdings[i]["symbol"],
+                                                   "price": round(new_price, 4),
+                                                   "fetched_at": datetime.datetime.utcnow().isoformat()})
+                        save(fname, holdings)
+                        if price_rows:
+                            deduped = list({r["symbol"]: r for r in price_rows}.values())
+                            try:
+                                service_upsert("equity_international_prices", deduped, conflict_col="symbol")
+                            except Exception as e:
+                                st.warning(f"Holdings saved but price update failed: {e}")
+                        st.success("✅ Changes saved.")
+                        st.rerun()
+                    if bc2.button("🗑️ Delete Selected", key=f"del_intl_btn_{owner}"):
+                        sel = edited[edited["☑"]].index.tolist()
+                        if sel:
+                            for j in sorted(sel, reverse=True):
+                                holdings.pop(j)
+                            save(fname, holdings)
+                            st.success(f"✅ {len(sel)} holding(s) removed.")
+                            st.rerun()
+                        else:
+                            st.warning("Tick at least one row to delete.")
+
+            # ── Add ───────────────────────────────────────────────────────
+            with st.expander(f"➕ Add Holding — {owner}"):
+                with st.form(f"add_intl_{owner}"):
+                    c1, c2, c3 = st.columns(3)
+                    name   = c1.text_input("Company Name")
+                    symbol = c2.text_input("Symbol")
+                    isin   = c3.text_input("ISIN")
+                    c4, c5, c6 = st.columns(3)
+                    region   = c4.selectbox("Region",   REGIONS)
+                    exchange = c5.selectbox("Exchange", EXCHANGES)
+                    currency = c6.selectbox("Currency", CURRENCIES)
+                    c7, c8, c9 = st.columns(3)
+                    source   = c7.selectbox("Source", SOURCES)
+                    buy_date = c8.date_input("Buy Date", value=datetime.date.today(), format="DD/MM/YYYY")
+                    qty      = c9.number_input("Quantity",       min_value=0.0, step=1.0,  format="%.4f")
+                    avg_cost = st.number_input("Avg Cost (FCY)", min_value=0.0, step=0.01, format="%.4f")
+                    if st.form_submit_button("Add Holding"):
+                        if not symbol.strip():
+                            st.error("Symbol is required.")
+                        else:
+                            holdings.append({
+                                "name": name.strip(), "symbol": symbol.strip().upper(),
+                                "isin": isin.strip().upper(), "region": region,
+                                "exchange": exchange, "currency": currency,
+                                "source": source, "buy_date": str(buy_date),
+                                "qty": qty, "avg_cost": avg_cost,
+                            })
+                            save(fname, holdings)
+                            st.success(f"✅ {symbol.upper()} added.")
+                            st.rerun()
+
+            # ── Edit ──────────────────────────────────────────────────────
+            if holdings:
+                with st.expander(f"✏️ Edit Holding — {owner}"):
+                    options = [f"{h['symbol']} — {h.get('name','')} ({h.get('region','')})"
+                               for h in holdings]
+                    sel     = st.selectbox("Select holding", options, key=f"edit_intl_sel_{owner}")
+                    idx     = options.index(sel)
+                    h       = holdings[idx]
+                    with st.form(f"edit_intl_{owner}"):
+                        c1, c2, c3 = st.columns(3)
+                        name   = c1.text_input("Company Name", value=h.get("name",""))
+                        symbol = c2.text_input("Symbol",       value=h.get("symbol",""))
+                        isin   = c3.text_input("ISIN",         value=h.get("isin",""))
+                        c4, c5, c6 = st.columns(3)
+                        region   = c4.selectbox("Region",   REGIONS,
+                                                index=REGIONS.index(h.get("region","UAE"))
+                                                if h.get("region") in REGIONS else 0)
+                        exchange = c5.selectbox("Exchange", EXCHANGES,
+                                                index=EXCHANGES.index(h.get("exchange","ADX"))
+                                                if h.get("exchange") in EXCHANGES else 0)
+                        currency = c6.selectbox("Currency", CURRENCIES,
+                                                index=CURRENCIES.index(h.get("currency","AED"))
+                                                if h.get("currency") in CURRENCIES else 0)
+                        c7, c8, c9 = st.columns(3)
+                        source   = c7.selectbox("Source", SOURCES,
+                                                index=SOURCES.index(h.get("source","Market"))
+                                                if h.get("source") in SOURCES else 0)
+                        buy_date = c8.date_input("Buy Date",
+                                                 value=parse_date(h.get("buy_date")) or datetime.date.today(),
+                                                 format="DD/MM/YYYY", key=f"edit_intl_bd_{owner}")
+                        qty      = c9.number_input("Quantity",       value=float(h.get("qty",0)),
+                                                   min_value=0.0, step=1.0,  format="%.4f")
+                        avg_cost = st.number_input("Avg Cost (FCY)", value=float(h.get("avg_cost",0)),
+                                                   min_value=0.0, step=0.01, format="%.4f")
+                        if st.form_submit_button("Save Changes"):
+                            holdings[idx] = {
+                                "name": name.strip(), "symbol": symbol.strip().upper(),
+                                "isin": isin.strip().upper(), "region": region,
+                                "exchange": exchange, "currency": currency,
+                                "source": source, "buy_date": str(buy_date),
+                                "qty": qty, "avg_cost": avg_cost,
+                            }
+                            save(fname, holdings)
+                            st.success("✅ Changes saved.")
+                            st.rerun()
+
+        # ── Day View ──────────────────────────────────────────────────────────
+        with sub_d:
+            _day_view_intl(holdings)
+
+
+# ── All ───────────────────────────────────────────────────────────────────────
+with tab_all:
+    sub_all_h, sub_all_d = st.tabs(["📋 Holdings", "📊 Day View"])
+
+    with sub_all_h:
+        all_rows  = []
+        grand_inv = grand_cv = 0.0
+        for owner, fname in OWNERS:
+            for h in load(fname):
                 sym     = h["symbol"].upper()
                 qty     = float(h.get("qty", 0))
                 cost    = float(h.get("avg_cost", 0))
@@ -62,42 +382,31 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                 cv_inr  = cv_f  * rate
                 gl_inr  = cv_inr - inv_inr
                 ret     = (gl_inr / inv_inr * 100) if inv_inr > 0 else 0.0
-                total_inv += inv_inr
-                total_cv  += cv_inr
-                rows.append({
+                grand_inv += inv_inr
+                grand_cv  += cv_inr
+                all_rows.append({
+                    "Owner":               owner,
                     "Company Name":        h.get("name", "") or "—",
+                    "Symbol":              sym,
+                    "Currency":            curr,
                     "Qty":                 qty,
                     "Avg Cost (FCY)":      cost,
-                    "Invested (FCY)":      inv_f,
                     "Current Price (FCY)": price if price > 0 else None,
-                    "Current Value (FCY)": cv_f,
-                    "Forex Rate":          rate,
                     "Invested (INR)":      inv_inr,
                     "Current Value (INR)": cv_inr,
                     "Gain/Loss (INR)":     gl_inr,
                     "Return %":            ret,
                     "% of Portfolio":      0.0,
-                    "Symbol":              sym,
-                    "ISIN":                h.get("isin", "") or "—",
-                    "Region":              h.get("region", "") or "—",
-                    "Exchange":            h.get("exchange", "") or "—",
-                    "Currency":            curr,
-                    "Source":              h.get("source", "") or "—",
-                    "Buy Date":            fmt_date(h.get("buy_date", "")),
                 })
-
-            total_cv_safe = total_cv if total_cv > 0 else 1.0
-            for r in rows:
-                r["% of Portfolio"] = r["Current Value (INR)"] / total_cv_safe * 100
-
-            df  = pd.DataFrame(rows)
+        if all_rows:
+            safe = grand_cv if grand_cv > 0 else 1.0
+            for r in all_rows:
+                r["% of Portfolio"] = r["Current Value (INR)"] / safe * 100
+            df  = pd.DataFrame(all_rows)
             fmt = {
                 "Qty":                 lambda v: f"{v:,.0f}" if v is not None else "—",
                 "Avg Cost (FCY)":      lambda v: plain_num(v, decimals=4) if v is not None else "—",
-                "Invested (FCY)":      lambda v: plain_num(v) if v is not None else "—",
                 "Current Price (FCY)": lambda v: plain_num(v, decimals=4) if v is not None else "—",
-                "Current Value (FCY)": lambda v: plain_num(v) if v is not None else "—",
-                "Forex Rate":          lambda v: f"{v:.4f}" if v is not None else "—",
                 "Invested (INR)":      lambda v: ind_num(v),
                 "Current Value (INR)": lambda v: ind_num(v),
                 "Gain/Loss (INR)":     lambda v: ind_num(v),
@@ -110,211 +419,83 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                   .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
                                  "color:red"   if isinstance(v, float) and v <  0 else "",
                        subset=["Gain/Loss (INR)", "Return %"]),
-                use_container_width=True,
-                hide_index=True,
+                use_container_width=True, hide_index=True,
             )
-            total_metrics(total_inv, total_cv)
-
+            total_metrics(grand_inv, grand_cv)
         else:
-            st.info(f"No international holdings for {owner} yet. Add below.")
+            st.info("No international equity holdings yet.")
 
-        st.divider()
-
-        # ── Quick Edit ────────────────────────────────────────────────────────
-        if holdings:
-            with st.expander("✏️ Quick Edit"):
-                qe_rows = []
-                for h in holdings:
-                    sym = h["symbol"].upper()
-                    qe_rows.append({
-                        "☑":                 False,
-                        "Symbol":              sym,
-                        "Company Name":        h.get("name", "") or "—",
-                        "Source":              h.get("source", "Market"),
-                        "Buy Date":            parse_date(h.get("buy_date", "")),
-                        "Qty":                 float(h.get("qty", 0)),
-                        "Avg Cost (FCY)":      float(h.get("avg_cost", 0)),
-                        "Current Price (FCY)": prices.get(sym, 0.0),
-                    })
-                edited = st.data_editor(
-                    pd.DataFrame(qe_rows),
-                    column_config={
-                        "☑":                 st.column_config.CheckboxColumn("☑", width="small"),
-                        "Symbol":              st.column_config.TextColumn(),
-                        "Company Name":        st.column_config.TextColumn(width="medium"),
-                        "Source":              st.column_config.SelectboxColumn(options=SOURCES),
-                        "Buy Date":            st.column_config.DateColumn(format="DD-MMM-YYYY"),
-                        "Qty":                 st.column_config.NumberColumn(format="%.4f", min_value=0.0),
-                        "Avg Cost (FCY)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
-                        "Current Price (FCY)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
-                    },
-                    hide_index=True, use_container_width=True, key=f"qe_intl_{owner}",
-                )
-                bc1, bc2 = st.columns(2)
-                if bc1.button("💾 Save Changes", key=f"qsave_intl_{owner}"):
-                    price_rows = []
-                    for i in range(len(holdings)):
-                        holdings[i]["symbol"]   = str(edited.iloc[i]["Symbol"]).upper()
-                        holdings[i]["name"]     = str(edited.iloc[i]["Company Name"])
-                        holdings[i]["source"]   = str(edited.iloc[i]["Source"])
-                        raw_bd = edited.iloc[i]["Buy Date"]
-                        holdings[i]["buy_date"] = raw_bd.isoformat() if isinstance(raw_bd, datetime.date) else (str(raw_bd)[:10] if raw_bd else "")
-                        holdings[i]["qty"]      = float(edited.iloc[i]["Qty"])
-                        holdings[i]["avg_cost"] = float(edited.iloc[i]["Avg Cost (FCY)"])
-                        new_price = float(edited.iloc[i]["Current Price (FCY)"] or 0)
-                        if new_price > 0:
-                            price_rows.append({"symbol": holdings[i]["symbol"],
-                                               "price": round(new_price, 4),
-                                               "fetched_at": datetime.datetime.utcnow().isoformat()})
-                    save(fname, holdings)
-                    if price_rows:
-                        deduped = list({r["symbol"]: r for r in price_rows}.values())
-                        try:
-                            service_upsert("equity_international_prices", deduped, conflict_col="symbol")
-                        except Exception as e:
-                            st.warning(f"Holdings saved but price update failed: {e}")
-                    st.success("✅ Changes saved.")
-                    st.rerun()
-                if bc2.button("🗑️ Delete Selected", key=f"del_intl_btn_{owner}"):
-                    sel = edited[edited["☑"]].index.tolist()
-                    if sel:
-                        for j in sorted(sel, reverse=True):
-                            holdings.pop(j)
-                        save(fname, holdings)
-                        st.success(f"✅ {len(sel)} holding(s) removed.")
-                        st.rerun()
-                    else:
-                        st.warning("Tick at least one row to delete.")
-
-        # ── Add ───────────────────────────────────────────────────────────────
-        with st.expander(f"➕ Add Holding — {owner}"):
-            with st.form(f"add_intl_{owner}"):
-                c1, c2, c3 = st.columns(3)
-                name   = c1.text_input("Company Name")
-                symbol = c2.text_input("Symbol")
-                isin   = c3.text_input("ISIN")
-                c4, c5, c6 = st.columns(3)
-                region   = c4.selectbox("Region",   REGIONS)
-                exchange = c5.selectbox("Exchange", EXCHANGES)
-                currency = c6.selectbox("Currency", CURRENCIES)
-                c7, c8, c9 = st.columns(3)
-                source   = c7.selectbox("Source", SOURCES)
-                buy_date = c8.date_input("Buy Date", value=datetime.date.today(), format="DD/MM/YYYY")
-                qty      = c9.number_input("Quantity",       min_value=0.0, step=1.0,  format="%.4f")
-                avg_cost = st.number_input("Avg Cost (FCY)", min_value=0.0, step=0.01, format="%.4f")
-                if st.form_submit_button("Add Holding"):
-                    if not symbol.strip():
-                        st.error("Symbol is required.")
-                    else:
-                        holdings.append({
-                            "name": name.strip(), "symbol": symbol.strip().upper(),
-                            "isin": isin.strip().upper(), "region": region,
-                            "exchange": exchange, "currency": currency,
-                            "source": source, "buy_date": str(buy_date),
-                            "qty": qty, "avg_cost": avg_cost,
-                        })
-                        save(fname, holdings)
-                        st.success(f"✅ {symbol.upper()} added.")
-                        st.rerun()
-
-        # ── Edit ──────────────────────────────────────────────────────────────
-        if holdings:
-            with st.expander(f"✏️ Edit Holding — {owner}"):
-                options = [f"{h['symbol']} — {h.get('name','')} ({h.get('region','')})" for h in holdings]
-                sel     = st.selectbox("Select holding", options, key=f"edit_intl_sel_{owner}")
-                idx     = options.index(sel)
-                h       = holdings[idx]
-                with st.form(f"edit_intl_{owner}"):
-                    c1, c2, c3 = st.columns(3)
-                    name   = c1.text_input("Company Name", value=h.get("name",""))
-                    symbol = c2.text_input("Symbol",       value=h.get("symbol",""))
-                    isin   = c3.text_input("ISIN",         value=h.get("isin",""))
-                    c4, c5, c6 = st.columns(3)
-                    region   = c4.selectbox("Region",   REGIONS,
-                                            index=REGIONS.index(h.get("region","UAE")) if h.get("region") in REGIONS else 0)
-                    exchange = c5.selectbox("Exchange", EXCHANGES,
-                                            index=EXCHANGES.index(h.get("exchange","ADX")) if h.get("exchange") in EXCHANGES else 0)
-                    currency = c6.selectbox("Currency", CURRENCIES,
-                                            index=CURRENCIES.index(h.get("currency","AED")) if h.get("currency") in CURRENCIES else 0)
-                    c7, c8, c9 = st.columns(3)
-                    source   = c7.selectbox("Source", SOURCES,
-                                            index=SOURCES.index(h.get("source","Market")) if h.get("source") in SOURCES else 0)
-                    buy_date = c8.date_input("Buy Date", value=parse_date(h.get("buy_date")) or datetime.date.today(),
-                                            format="DD/MM/YYYY", key=f"edit_intl_bd_{owner}")
-                    qty      = c9.number_input("Quantity",       value=float(h.get("qty",0)),      min_value=0.0, step=1.0,  format="%.4f")
-                    avg_cost = st.number_input("Avg Cost (FCY)", value=float(h.get("avg_cost",0)), min_value=0.0, step=0.01, format="%.4f")
-                    if st.form_submit_button("Save Changes"):
-                        holdings[idx] = {
-                            "name": name.strip(), "symbol": symbol.strip().upper(),
-                            "isin": isin.strip().upper(), "region": region,
-                            "exchange": exchange, "currency": currency,
-                            "source": source, "buy_date": str(buy_date),
-                            "qty": qty, "avg_cost": avg_cost,
-                        }
-                        save(fname, holdings)
-                        st.success("✅ Changes saved.")
-                        st.rerun()
-
-
-# ── All ───────────────────────────────────────────────────────────────────────
-with tab_all:
-    all_rows = []
-    grand_inv = grand_cv = 0.0
-    for owner, fname in OWNERS:
-        for h in load(fname):
-            sym     = h["symbol"].upper()
-            qty     = float(h.get("qty", 0))
-            cost    = float(h.get("avg_cost", 0))
-            curr    = h.get("currency", "USD")
-            rate    = fx_rate(curr)
-            price   = prices.get(sym, 0)
-            inv_f   = qty * cost
-            cv_f    = qty * price if price > 0 else inv_f
-            inv_inr = inv_f * rate
-            cv_inr  = cv_f  * rate
-            gl_inr  = cv_inr - inv_inr
-            ret     = (gl_inr / inv_inr * 100) if inv_inr > 0 else 0.0
-            grand_inv += inv_inr
-            grand_cv  += cv_inr
-            all_rows.append({
-                "Owner":               owner,
-                "Company Name":        h.get("name", "") or "—",
-                "Symbol":              sym,
-                "Currency":            curr,
-                "Qty":                 qty,
-                "Avg Cost (FCY)":      cost,
-                "Current Price (FCY)": price if price > 0 else None,
-                "Invested (INR)":      inv_inr,
-                "Current Value (INR)": cv_inr,
-                "Gain/Loss (INR)":     gl_inr,
-                "Return %":            ret,
-                "% of Portfolio":      0.0,
-            })
-
-    if all_rows:
-        safe = grand_cv if grand_cv > 0 else 1.0
-        for r in all_rows:
-            r["% of Portfolio"] = r["Current Value (INR)"] / safe * 100
-        df  = pd.DataFrame(all_rows)
-        fmt = {
-            "Qty":                 lambda v: f"{v:,.0f}" if v is not None else "—",
-            "Avg Cost (FCY)":      lambda v: plain_num(v, decimals=4) if v is not None else "—",
-            "Current Price (FCY)": lambda v: plain_num(v, decimals=4) if v is not None else "—",
-            "Invested (INR)":      lambda v: ind_num(v),
-            "Current Value (INR)": lambda v: ind_num(v),
-            "Gain/Loss (INR)":     lambda v: ind_num(v),
-            "Return %":            lambda v: f"{v:+.2f}%" if v is not None else "—",
-            "% of Portfolio":      lambda v: f"{v:.2f}%" if v is not None else "—",
-        }
-        st.dataframe(
-            df.style
-              .format(fmt)
-              .map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
-                             "color:red"   if isinstance(v, float) and v <  0 else "",
-                   subset=["Gain/Loss (INR)", "Return %"]),
-            use_container_width=True,
-            hide_index=True,
-        )
-        total_metrics(grand_inv, grand_cv)
-    else:
-        st.info("No international equity holdings yet.")
+    with sub_all_d:
+        all_dv = []
+        for owner, fname in OWNERS:
+            for h in load(fname):
+                all_dv.append({**h, "_owner": owner})
+        if not all_dv:
+            st.info("No international equity holdings yet.")
+        else:
+            dv_rows = []
+            for h in all_dv:
+                sym            = h["symbol"].upper()
+                qty            = float(h.get("qty", 0))
+                avg_cost       = float(h.get("avg_cost", 0))
+                curr           = h.get("currency", "USD")
+                rate           = fx_rate(curr)
+                price_fcy      = prices.get(sym, 0)
+                prev_price_fcy = prev_prices.get(sym, 0)
+                invested       = qty * avg_cost * rate
+                value          = qty * price_fcy * rate if price_fcy > 0 else invested
+                gl             = value - invested
+                day_gl         = (price_fcy - prev_price_fcy) * qty * rate \
+                                 if price_fcy > 0 and prev_price_fcy > 0 else None
+                day_pct        = ((price_fcy - prev_price_fcy) / prev_price_fcy * 100) \
+                                 if price_fcy > 0 and prev_price_fcy > 0 else None
+                dv_rows.append({
+                    "Owner":      h["_owner"],
+                    "Company":    h.get("name") or sym,
+                    "Ccy":        curr,
+                    "Qty":        qty,
+                    "Invested":   invested,
+                    "Price":      price_fcy      if price_fcy      > 0 else None,
+                    "Value":      value,
+                    "G/L":        gl,
+                    "Prev Close": prev_price_fcy if prev_price_fcy > 0 else None,
+                    "Day G/L":    day_gl,
+                    "Day %":      day_pct,
+                })
+            df_dv    = pd.DataFrame(dv_rows).sort_values("Day %", ascending=False, na_position="last")
+            inr_cols = ["Invested", "Value", "G/L", "Day G/L"]
+            fcy_cols = ["Price", "Prev Close"]
+            fmt_dv   = {c: (lambda v: ind_num(v)   if v is not None else "—") for c in inr_cols}
+            fmt_dv.update({c: (lambda v: plain_num(v) if v is not None else "—") for c in fcy_cols})
+            fmt_dv["Qty"]   = lambda v: f"{v:,.4f}" if v is not None else "—"
+            fmt_dv["Day %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
+            st.dataframe(
+                df_dv.style.format(fmt_dv)
+                     .map(lambda v: "color:green" if isinstance(v, float) and v >= 0
+                               else "color:red"   if isinstance(v, float) and v <  0
+                               else "", subset=["G/L", "Day G/L", "Day %"]),
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "Owner":      st.column_config.TextColumn("Owner",      width="small"),
+                    "Company":    st.column_config.TextColumn("Company",    width="large"),
+                    "Ccy":        st.column_config.TextColumn("Ccy",        width="small"),
+                    "Qty":        st.column_config.TextColumn("Qty",        width="small"),
+                    "Invested":   st.column_config.TextColumn("Invested",   width="medium"),
+                    "Price":      st.column_config.TextColumn("Price",      width="medium"),
+                    "Value":      st.column_config.TextColumn("Value",      width="medium"),
+                    "G/L":        st.column_config.TextColumn("G/L",        width="medium"),
+                    "Prev Close": st.column_config.TextColumn("Prev Close", width="medium"),
+                    "Day G/L":    st.column_config.TextColumn("Day G/L",    width="medium"),
+                    "Day %":      st.column_config.TextColumn("Day %",      width="small"),
+                },
+            )
+            total_inv = sum(r["Invested"] for r in dv_rows)
+            total_val = sum(r["Value"]    for r in dv_rows)
+            total_gl  = total_val - total_inv
+            total_dgl = sum(r["Day G/L"] for r in dv_rows if r["Day G/L"] is not None)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Invested", ind_num(total_inv))
+            c2.metric("Value",    ind_num(total_val))
+            c3.metric("G/L",      ind_num(total_gl))
+            c4.metric("Day G/L",  ind_num(total_dgl),
+                      delta=f"{(total_dgl/total_val*100):+.2f}%" if total_val > 0 else None)

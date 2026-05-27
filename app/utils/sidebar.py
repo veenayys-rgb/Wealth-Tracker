@@ -135,6 +135,98 @@ def _apply_prev_price(rows: list[dict], table: str) -> list[dict]:
     return rows
 
 
+_INTL_SUFFIX = {"UAE": ".AD", "US": "", "UK": ".L", "Other": ""}
+
+
+def refresh_india_equity_prices() -> tuple[int, int]:
+    """Fetch India equity prices (NSE batch + fallback). Returns (saved, total)."""
+    _FILES = ["equity_india_vinay.json", "equity_india_harsh.json",
+              "equity_india_anusha.json", "mom_equity_india.json"]
+    all_h = []
+    for f in _FILES:
+        all_h.extend(load(f))
+    if not all_h:
+        return 0, 0
+    syms = list({h["symbol"].upper() for h in all_h if h.get("symbol", "").strip()})
+    ssl._create_default_https_context = ssl._create_unverified_context
+    eq_rows, nse_miss = [], []
+    nse_tickers = [f"{s}.NS" for s in syms]
+    try:
+        raw   = yf.download(nse_tickers, period="5d", auto_adjust=True,
+                            progress=False, group_by="ticker", threads=True)
+        multi = len(nse_tickers) > 1
+        for s, t in zip(syms, nse_tickers):
+            try:
+                closes = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
+                price  = round(float(closes.iloc[-1]), 4) if len(closes) > 0 else 0
+                if price > 0:
+                    eq_rows.append({"symbol": s, "price": price,
+                                    "fetched_at": datetime.datetime.utcnow().isoformat()})
+                else:
+                    nse_miss.append(s)
+            except Exception:
+                nse_miss.append(s)
+    except Exception:
+        nse_miss = syms
+    for s in nse_miss:
+        for suffix in [".NS", ".BO"]:
+            try:
+                info  = yf.Ticker(f"{s}{suffix}").fast_info
+                p     = getattr(info, "last_price", None)
+                if p and float(p) > 0:
+                    eq_rows.append({"symbol": s, "price": round(float(p), 4),
+                                    "fetched_at": datetime.datetime.utcnow().isoformat()})
+                    break
+            except Exception:
+                pass
+            time.sleep(0.2)
+        time.sleep(0.3)
+    rows = list({r["symbol"]: r for r in eq_rows}.values())
+    rows = _apply_prev_price(rows, "equity_india_prices")
+    service_upsert("equity_india_prices", rows, conflict_col="symbol")
+    return len(rows), len(syms)
+
+
+def refresh_intl_equity_prices() -> tuple[int, int]:
+    """Fetch international equity prices. Returns (saved, total)."""
+    _FILES = ["equity_intl_vinay.json", "equity_intl_harsh.json", "equity_intl_anusha.json"]
+    all_h = []
+    for f in _FILES:
+        all_h.extend(load(f))
+    if not all_h:
+        return 0, 0
+    total = len({h["symbol"].upper() for h in all_h if h.get("symbol")})
+    by_region: dict = {}
+    for h in all_h:
+        by_region.setdefault(h.get("region", "Other"), []).append(h)
+    rows = []
+    for region, items in by_region.items():
+        suffix  = _INTL_SUFFIX.get(region, "")
+        tickers = [f"{h['symbol'].upper()}{suffix}" for h in items]
+        try:
+            raw   = yf.download(tickers, period="5d", auto_adjust=True,
+                                progress=False, group_by="ticker", threads=True)
+            multi = len(tickers) > 1
+            for h, t in zip(items, tickers):
+                sym = h["symbol"].upper()
+                try:
+                    closes = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
+                    price  = round(float(closes.iloc[-1]), 4) if len(closes) > 0 else 0
+                    if price > 0:
+                        rows.append({"symbol": sym, "region": region,
+                                     "currency": h.get("currency", "USD"),
+                                     "price": price,
+                                     "fetched_at": datetime.datetime.utcnow().isoformat()})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    rows = list({r["symbol"]: r for r in rows}.values())
+    rows = _apply_prev_price(rows, "equity_international_prices")
+    service_upsert("equity_international_prices", rows, conflict_col="symbol")
+    return len(rows), total
+
+
 _MOBILE_CSS = """
 <style>
 @media (max-width: 768px) {

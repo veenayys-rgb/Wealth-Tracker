@@ -139,7 +139,6 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     "% of Portfolio":    0.0,
                     "Folio No":          h.get("folio_no") or "—",
                     "ISIN No":           isin or "—",
-                    "Fund Name":         h.get("fund_name") or "—",
                 })
 
             total_cv_safe = total_cv if total_cv > 0 else 1.0

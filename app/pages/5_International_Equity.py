@@ -101,19 +101,19 @@ def _day_view_intl(dv_holdings, show_owner: str | None = None):
     fmt_dv["Day %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
 
     col_cfg = {
-        "Company":    st.column_config.TextColumn("Company",    width="large"),
-        "Ccy":        st.column_config.TextColumn("Ccy",        width="small"),
-        "Qty":        st.column_config.TextColumn("Qty",        width="small"),
-        "Invested":   st.column_config.TextColumn("Invested",   width="medium"),
-        "Price":      st.column_config.TextColumn("Price",      width="medium"),
-        "Value":      st.column_config.TextColumn("Value",      width="medium"),
-        "G/L":        st.column_config.TextColumn("G/L",        width="medium"),
-        "Prev Close": st.column_config.TextColumn("Prev Close", width="medium"),
-        "Day G/L":    st.column_config.TextColumn("Day G/L",    width="medium"),
-        "Day %":      st.column_config.TextColumn("Day %",      width="small"),
+        "Company":    st.column_config.TextColumn("Company"),
+        "Ccy":        st.column_config.TextColumn("Ccy"),
+        "Qty":        st.column_config.TextColumn("Qty"),
+        "Invested":   st.column_config.TextColumn("Invested"),
+        "Price":      st.column_config.TextColumn("Price"),
+        "Value":      st.column_config.TextColumn("Value"),
+        "G/L":        st.column_config.TextColumn("G/L"),
+        "Prev Close": st.column_config.TextColumn("Prev Close"),
+        "Day G/L":    st.column_config.TextColumn("Day G/L"),
+        "Day %":      st.column_config.TextColumn("Day %"),
     }
     if show_owner:
-        col_cfg = {"Owner": st.column_config.TextColumn("Owner", width="small"), **col_cfg}
+        col_cfg = {"Owner": st.column_config.TextColumn("Owner"), **col_cfg}
 
     st.dataframe(
         df_dv.style.format(fmt_dv)
@@ -476,17 +476,17 @@ with tab_all:
                                else "", subset=["G/L", "Day G/L", "Day %"]),
                 use_container_width=True, hide_index=True,
                 column_config={
-                    "Owner":      st.column_config.TextColumn("Owner",      width="small"),
-                    "Company":    st.column_config.TextColumn("Company",    width="large"),
-                    "Ccy":        st.column_config.TextColumn("Ccy",        width="small"),
-                    "Qty":        st.column_config.TextColumn("Qty",        width="small"),
-                    "Invested":   st.column_config.TextColumn("Invested",   width="medium"),
-                    "Price":      st.column_config.TextColumn("Price",      width="medium"),
-                    "Value":      st.column_config.TextColumn("Value",      width="medium"),
-                    "G/L":        st.column_config.TextColumn("G/L",        width="medium"),
-                    "Prev Close": st.column_config.TextColumn("Prev Close", width="medium"),
-                    "Day G/L":    st.column_config.TextColumn("Day G/L",    width="medium"),
-                    "Day %":      st.column_config.TextColumn("Day %",      width="small"),
+                    "Owner":      st.column_config.TextColumn("Owner"),
+                    "Company":    st.column_config.TextColumn("Company"),
+                    "Ccy":        st.column_config.TextColumn("Ccy"),
+                    "Qty":        st.column_config.TextColumn("Qty"),
+                    "Invested":   st.column_config.TextColumn("Invested"),
+                    "Price":      st.column_config.TextColumn("Price"),
+                    "Value":      st.column_config.TextColumn("Value"),
+                    "G/L":        st.column_config.TextColumn("G/L"),
+                    "Prev Close": st.column_config.TextColumn("Prev Close"),
+                    "Day G/L":    st.column_config.TextColumn("Day G/L"),
+                    "Day %":      st.column_config.TextColumn("Day %"),
                 },
             )
             total_inv = sum(r["Invested"] for r in dv_rows)

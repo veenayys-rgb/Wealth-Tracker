@@ -10,16 +10,27 @@ Follow every rule below without exception.
 **Problem:** Streamlit Cloud warm-reloads page files without restarting Python.
 Old utility modules stay cached in `sys.modules`, so new exports cause `ImportError`.
 
+**Permanent fix:** `app/utils/__init__.py` contains an eviction loop that removes
+all `utils.*` entries from `sys.modules` on every import. This means Streamlit will
+always re-import the latest version of every utility module automatically.
+
 **Rule:** Whenever you add a new function or export to ANY file in `app/utils/`
-(`db.py`, `fmt.py`, `sidebar.py`, `config.py`), you MUST bump `__version__`
-in `app/utils/__init__.py` **in the same commit**.
+(`db.py`, `fmt.py`, `sidebar.py`, `config.py`), you MUST still bump `__version__`
+in `app/utils/__init__.py` **in the same commit** — this is what triggers Streamlit
+Cloud to detect the file as changed and re-run the eviction loop.
 
 ```python
 # app/utils/__init__.py
-__version__ = "1.3"   # was 1.2 → bumped because fetch_xyz added to db.py
+__version__ = "1.5"   # was 1.4 → bumped because fetch_xyz added to db.py
+
+import sys as _sys
+_pkg = __name__
+for _k in [k for k in _sys.modules if k == _pkg or k.startswith(_pkg + ".")]:
+    _sys.modules.pop(_k, None)
 ```
 
-Never use `# noqa` comment hacks as a fix after the fact — bump the version proactively.
+Never use `# noqa` comment hacks or "touch" commits as a fix — the eviction loop
+handles it, as long as `__version__` is bumped in the same commit as the new export.
 
 ---
 

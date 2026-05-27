@@ -310,27 +310,24 @@ def render_sidebar():
                             _updated += len(deduped)
                     st.session_state["_wl_errors"] = wl_errors
 
-                    # ── History snapshot check ────────────────────────
+                    # ── History snapshot check ─────────────────────────
+                    # Always check when manually refreshed — no market-hours
+                    # restriction (user is making an explicit call to catch up)
                     _today_str = datetime.datetime.now(_IST_TZ).date().isoformat()
-                    _hist_status = None
-                    if _market_closed():
-                        _existing = fetch_one("portfolio_history", "date", _today_str)
-                        if _existing:
-                            _hist_status = ("info",
-                                f"📅 History for {_today_str} already recorded.")
-                        else:
-                            try:
-                                _frow, _ = _record_history_snapshot()
-                                from utils.fmt import ind_num
-                                _hist_status = ("success",
-                                    f"📅 History snapshot saved for {_today_str}  "
-                                    f"(Total CV: {ind_num(_frow['total_cv'])})")
-                            except Exception as _he:
-                                _hist_status = ("warning",
-                                    f"📅 History snapshot failed: {_he}")
-                    else:
+                    _existing  = fetch_one("portfolio_history", "date", _today_str)
+                    if _existing:
                         _hist_status = ("info",
-                            "⏳ Market open — history will record after 3:30 PM IST.")
+                            f"📅 History for {_today_str} already recorded.")
+                    else:
+                        try:
+                            _frow, _ = _record_history_snapshot()
+                            from utils.fmt import ind_num
+                            _hist_status = ("success",
+                                f"📅 History snapshot saved for {_today_str}  "
+                                f"(Total CV: {ind_num(_frow['total_cv'])})")
+                        except Exception as _he:
+                            _hist_status = ("warning",
+                                f"📅 History snapshot failed: {_he}")
                     st.session_state["_hist_status"] = _hist_status
 
                     st.success(f"✅ Prices updated ({_updated} securities).")

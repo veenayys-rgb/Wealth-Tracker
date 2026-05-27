@@ -2,10 +2,115 @@
 import datetime, time, ssl, urllib.request
 import streamlit as st
 import yfinance as yf
-from utils.db     import service_upsert
+from utils.db     import service_upsert, fetch, fetch_one
 from utils.config import load
 
-SUFFIX = {"India": ".NS", "UAE": ".AD", "US": "", "UK": ".L", "Other": ""}
+SUFFIX   = {"India": ".NS", "UAE": ".AD", "US": "", "UK": ".L", "Other": ""}
+_IST_TZ  = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+_FAMILY  = {"Vinay", "Harsh", "Anusha"}
+
+
+def _market_closed() -> bool:
+    """True if NSE market is currently closed (after 3:30 PM IST or weekend)."""
+    now = datetime.datetime.now(_IST_TZ)
+    if now.weekday() >= 5:
+        return True
+    return now >= now.replace(hour=15, minute=30, second=0, microsecond=0)
+
+
+def _record_history_snapshot() -> tuple[dict, dict]:
+    """Compute today's portfolio snapshot and upsert to portfolio_history tables.
+    Returns (family_row, mom_row)."""
+    today     = datetime.datetime.now(_IST_TZ).date().isoformat()
+    eq_prices = {r["symbol"]: float(r["price"]) for r in fetch("equity_india_prices")}
+    mf_navs   = {r["isin"]:   float(r["nav"])   for r in fetch("mf_navs")}
+
+    # ── Family equity ─────────────────────────────────────────────────
+    eq_inv = eq_cv = 0.0
+    for h in load("equity_india.json"):
+        if h.get("owner") and h["owner"] not in _FAMILY:
+            continue
+        sym   = h["symbol"].upper()
+        qty   = float(h.get("qty", 0))
+        cost  = float(h.get("avg_cost", 0))
+        price = eq_prices.get(sym, 0)
+        eq_inv += qty * cost
+        eq_cv  += qty * price if price > 0 else qty * cost
+
+    # ── Family MF ─────────────────────────────────────────────────────
+    mf_data = {}
+    for owner in ["Vinay", "Harsh", "Anusha"]:
+        inv = cv = 0.0
+        for h in load(f"mutual_funds_{owner.lower()}.json"):
+            isin  = h.get("isin", "").upper()
+            units = float(h.get("units", 0))
+            anav  = float(h.get("avg_nav", 0))
+            nav   = mf_navs.get(isin, 0)
+            inv  += units * anav
+            cv   += units * nav if nav > 0 else units * anav
+        mf_data[owner.lower()] = {"invested": round(inv, 2), "cv": round(cv, 2)}
+
+    total_inv = eq_inv + sum(v["invested"] for v in mf_data.values())
+    total_cv  = eq_cv  + sum(v["cv"]       for v in mf_data.values())
+    gain      = total_cv - total_inv
+    ret_pct   = round(gain / total_inv * 100, 4) if total_inv > 0 else 0
+
+    family_row = {
+        "date":            today,
+        "shares_invested": round(eq_inv, 2),
+        "shares_cv":       round(eq_cv, 2),
+        "mf_inv_vinay":    mf_data["vinay"]["invested"],
+        "mf_cv_vinay":     mf_data["vinay"]["cv"],
+        "mf_inv_harsh":    mf_data["harsh"]["invested"],
+        "mf_cv_harsh":     mf_data["harsh"]["cv"],
+        "mf_inv_anusha":   mf_data["anusha"]["invested"],
+        "mf_cv_anusha":    mf_data["anusha"]["cv"],
+        "total_invested":  round(total_inv, 2),
+        "total_cv":        round(total_cv, 2),
+        "gain_loss":       round(gain, 2),
+        "return_pct":      ret_pct,
+    }
+    service_upsert("portfolio_history", [family_row], conflict_col="date")
+
+    # ── Mom equity ────────────────────────────────────────────────────
+    mom_eq_inv = mom_eq_cv = 0.0
+    for h in load("mom_equity_india.json"):
+        sym   = h["symbol"].upper()
+        qty   = float(h.get("qty", 0))
+        cost  = float(h.get("avg_cost", 0))
+        price = eq_prices.get(sym, 0)
+        mom_eq_inv += qty * cost
+        mom_eq_cv  += qty * price if price > 0 else qty * cost
+
+    # ── Mom MF ───────────────────────────────────────────────────────
+    mom_mf_inv = mom_mf_cv = 0.0
+    for h in load("mom_mutual_funds.json"):
+        isin  = h.get("isin", "").upper()
+        units = float(h.get("units", 0))
+        anav  = float(h.get("avg_nav", 0))
+        nav   = mf_navs.get(isin, 0)
+        mom_mf_inv += units * anav
+        mom_mf_cv  += units * nav if nav > 0 else units * anav
+
+    mom_total_inv = mom_eq_inv + mom_mf_inv
+    mom_total_cv  = mom_eq_cv  + mom_mf_cv
+    mom_gain      = mom_total_cv - mom_total_inv
+    mom_ret       = round(mom_gain / mom_total_inv * 100, 4) if mom_total_inv > 0 else 0
+
+    mom_row = {
+        "date":           today,
+        "eq_invested":    round(mom_eq_inv, 2),
+        "eq_cv":          round(mom_eq_cv, 2),
+        "mf_invested":    round(mom_mf_inv, 2),
+        "mf_cv":          round(mom_mf_cv, 2),
+        "total_invested": round(mom_total_inv, 2),
+        "total_cv":       round(mom_total_cv, 2),
+        "gain_loss":      round(mom_gain, 2),
+        "return_pct":     mom_ret,
+    }
+    service_upsert("portfolio_history_mom", [mom_row], conflict_col="date")
+
+    return family_row, mom_row
 
 
 _MOBILE_CSS = """
@@ -205,6 +310,29 @@ def render_sidebar():
                             _updated += len(deduped)
                     st.session_state["_wl_errors"] = wl_errors
 
+                    # ── History snapshot check ────────────────────────
+                    _today_str = datetime.datetime.now(_IST_TZ).date().isoformat()
+                    _hist_status = None
+                    if _market_closed():
+                        _existing = fetch_one("portfolio_history", "date", _today_str)
+                        if _existing:
+                            _hist_status = ("info",
+                                f"📅 History for {_today_str} already recorded.")
+                        else:
+                            try:
+                                _frow, _ = _record_history_snapshot()
+                                from utils.fmt import ind_num
+                                _hist_status = ("success",
+                                    f"📅 History snapshot saved for {_today_str}  "
+                                    f"(Total CV: {ind_num(_frow['total_cv'])})")
+                            except Exception as _he:
+                                _hist_status = ("warning",
+                                    f"📅 History snapshot failed: {_he}")
+                    else:
+                        _hist_status = ("info",
+                            "⏳ Market open — history will record after 3:30 PM IST.")
+                    st.session_state["_hist_status"] = _hist_status
+
                     st.success(f"✅ Prices updated ({_updated} securities).")
                     st.rerun()
                 except Exception as e:
@@ -212,4 +340,10 @@ def render_sidebar():
         if st.session_state.get("_wl_errors"):
             for err in st.session_state["_wl_errors"]:
                 st.warning(f"⚠️ WL: {err}")
+        _hs = st.session_state.get("_hist_status")
+        if _hs:
+            typ, msg = _hs
+            if typ == "success": st.success(msg)
+            elif typ == "warning": st.warning(msg)
+            else: st.info(msg)
         st.markdown("---")

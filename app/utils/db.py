@@ -21,6 +21,13 @@ def fetch(table: str, columns: str = "*") -> list[dict]:
     return get_client().table(table).select(columns).execute().data
 
 
+def fetch_latest_ts(table: str, ts_col: str = "fetched_at") -> str | None:
+    """Return the single most recent value of ts_col from table, or None."""
+    rows = (get_client().table(table).select(ts_col)
+            .order(ts_col, desc=True).limit(1).execute().data)
+    return rows[0][ts_col] if rows else None
+
+
 def fetch_one(table: str, col: str, val: str) -> dict | None:
     rows = get_client().table(table).select("*").eq(col, val).execute().data
     return rows[0] if rows else None

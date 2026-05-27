@@ -5,9 +5,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.sidebar import render_sidebar
 import pandas as pd
-from utils.db     import fetch, get_forex
+from utils.db     import fetch, get_forex, fetch_latest_ts
 from utils.config import load
-from utils.fmt    import ind_num, pct, metric_card
+from utils.fmt    import ind_num, pct, metric_card, utc_to_ist
 
 st.set_page_config(page_title="Dashboard | Wealth Tracker", page_icon="📊", layout="wide")
 st.title("📊 Dashboard")
@@ -166,3 +166,53 @@ st.dataframe(
 )
 
 st.caption("Insurance = Surrender Value  |  Bank/FD/UAE shown as INR equivalent")
+
+st.divider()
+
+# ── Last Data Refresh status ──────────────────────────────────────────────────
+with st.expander("🔄 Last Data Refresh", expanded=False):
+    import datetime as _dt
+
+    _today = _dt.date.today()
+    _IST   = _dt.timezone(_dt.timedelta(hours=5, minutes=30))
+
+    def _status(ts_str: str | None) -> str:
+        if not ts_str:
+            return "❌  Never"
+        try:
+            dt  = _dt.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_dt.timezone.utc)
+            days = (_today - dt.astimezone(_IST).date()).days
+            if days == 0:   return "✅  Today"
+            if days == 1:   return "⚠️  Yesterday"
+            if days <= 4:   return f"⚠️  {days} days ago"
+            return          f"❌  {days} days ago"
+        except Exception:
+            return "❌  Unknown"
+
+    _feeds = [
+        ("Forex & Indices",       "forex_rates"),
+        ("MF NAVs",               "mf_navs"),
+        ("India Equity",          "equity_india_prices"),
+        ("International Equity",  "equity_international_prices"),
+        ("Watchlist",             "watchlist_prices"),
+    ]
+
+    _rows = []
+    for label, table in _feeds:
+        try:
+            ts = fetch_latest_ts(table)
+        except Exception:
+            ts = None
+        _rows.append({
+            "Feed":          label,
+            "Last Updated":  utc_to_ist(ts) if ts else "—",
+            "Status":        _status(ts),
+        })
+
+    st.dataframe(
+        pd.DataFrame(_rows),
+        use_container_width=True,
+        hide_index=True,
+    )

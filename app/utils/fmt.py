@@ -4,6 +4,22 @@ import datetime
 import pandas as pd
 
 
+_IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+
+def utc_to_ist(utc_str: str) -> str:
+    """Convert a UTC ISO timestamp string → 'DD-MMM-YYYY HH:MM IST', or '—'."""
+    try:
+        if not utc_str:
+            return "—"
+        dt = datetime.datetime.fromisoformat(str(utc_str).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(_IST).strftime("%d-%b-%Y %H:%M IST")
+    except Exception:
+        return str(utc_str)
+
+
 def fmt_date(d) -> str:
     """Convert ISO date string / date object → DD-MMM-YYYY, or '—' if blank."""
     try:

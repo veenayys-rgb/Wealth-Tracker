@@ -135,6 +135,26 @@ def _apply_prev_price(rows: list[dict], table: str) -> list[dict]:
     return rows
 
 
+def apply_prev_nav(rows: list[dict]) -> list[dict]:
+    """Date-guard for MF NAVs: roll nav → prev_nav only when nav_date changes."""
+    try:
+        existing = {r["isin"]: r for r in fetch("mf_navs")}
+    except Exception:
+        existing = {}
+    for r in rows:
+        ex           = existing.get(r["isin"], {})
+        ex_nav_date  = str(ex.get("nav_date")  or "")
+        new_nav_date = str(r.get("nav_date")   or "")
+        ex_nav       = float(ex["nav"]) if ex.get("nav") else 0.0
+        if ex_nav_date != new_nav_date and ex_nav > 0:
+            r["prev_nav"]      = ex_nav
+            r["prev_nav_date"] = ex_nav_date or None
+        else:
+            r["prev_nav"]      = float(ex["prev_nav"]) if ex.get("prev_nav") else None
+            r["prev_nav_date"] = str(ex.get("prev_nav_date") or "") or None
+    return rows
+
+
 _INTL_SUFFIX = {"UAE": ".AD", "US": "", "UK": ".L", "Other": ""}
 
 
@@ -385,6 +405,7 @@ def render_sidebar():
                                                     "nav_date": _iso(d["date"]), "amfi_name": d["name"],
                                                     "fetched_at": datetime.datetime.utcnow().isoformat()})
                             if mf_rows:
+                                mf_rows = apply_prev_nav(mf_rows)
                                 service_upsert("mf_navs", mf_rows, conflict_col="isin")
                                 _updated += len(mf_rows)
                         except Exception:

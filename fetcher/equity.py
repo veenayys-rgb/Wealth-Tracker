@@ -4,12 +4,39 @@ Uses batch yf.download() for speed; individual fallback for failures.
 """
 import time, datetime, ssl, os
 import yfinance as yf
-from db import upsert, fetch_cfg
+from db import upsert, fetch_cfg, get_client
 
 ssl._create_default_https_context = ssl._create_unverified_context
 os.environ["YFINANCE_CACHE_DIR"] = ""
 
 YF_DELAY = 0.5
+
+
+def _apply_prev_price(rows: list[dict], table: str) -> list[dict]:
+    """Date-guard: roll current price → prev_price only on a new trading day.
+    If the fetcher has already run today, prev_price stays unchanged."""
+    today = datetime.date.today().isoformat()
+    try:
+        existing = {r["symbol"]: r for r in
+                    get_client().table(table)
+                    .select("symbol,price,prev_price,prev_price_date")
+                    .execute().data}
+    except Exception:
+        existing = {}
+
+    for r in rows:
+        ex      = existing.get(r["symbol"], {})
+        ex_date = str(ex.get("prev_price_date") or "")
+        ex_px   = float(ex["price"]) if ex.get("price") else 0.0
+        if ex_date != today and ex_px > 0:
+            # New trading day — roll today's old price into prev_price
+            r["prev_price"]      = ex_px
+            r["prev_price_date"] = today
+        else:
+            # Same day — keep existing prev values untouched
+            r["prev_price"]      = float(ex["prev_price"]) if ex.get("prev_price") else None
+            r["prev_price_date"] = ex_date or None
+    return rows
 SUFFIX   = {"NSE": ".NS", "BSE": ".BO", "ADX": ".AD", "DFM": ".DFM",
             "US": "", "UK": ".L",
             "India": ".NS", "UAE": ".AD", "Other": ""}
@@ -108,6 +135,7 @@ def fetch_india() -> tuple[int, int]:
     for r in rows:
         seen[r["symbol"]] = r
     rows = list(seen.values())
+    rows = _apply_prev_price(rows, "equity_india_prices")
     upsert("equity_india_prices", rows, conflict_col="symbol")
     print(f"   💾  {len(rows)}/{len(symbols)} India prices saved to Supabase")
     return len(rows), len(symbols)
@@ -161,6 +189,7 @@ def fetch_international():
                 else:
                     print(f"   ❌  {sym:<18} Not found [{region}]")
 
+    rows = _apply_prev_price(rows, "equity_international_prices")
     upsert("equity_international_prices", rows, conflict_col="symbol")
     print(f"   💾  {len(rows)}/{len(holdings)} International prices saved to Supabase")
 

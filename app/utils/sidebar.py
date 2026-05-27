@@ -115,6 +115,26 @@ def _record_history_snapshot() -> tuple[dict, dict]:
     return family_row, mom_row
 
 
+def _apply_prev_price(rows: list[dict], table: str) -> list[dict]:
+    """Date-guard: roll current → prev_price only on a new trading day."""
+    today = datetime.datetime.now(_IST_TZ).date().isoformat()
+    try:
+        existing = {r["symbol"]: r for r in fetch(table)}
+    except Exception:
+        existing = {}
+    for r in rows:
+        ex      = existing.get(r["symbol"], {})
+        ex_date = str(ex.get("prev_price_date") or "")
+        ex_px   = float(ex["price"]) if ex.get("price") else 0.0
+        if ex_date != today and ex_px > 0:
+            r["prev_price"]      = ex_px
+            r["prev_price_date"] = today
+        else:
+            r["prev_price"]      = float(ex["prev_price"]) if ex.get("prev_price") else None
+            r["prev_price_date"] = ex_date or None
+    return rows
+
+
 _MOBILE_CSS = """
 <style>
 @media (max-width: 768px) {
@@ -228,6 +248,7 @@ def render_sidebar():
 
                         if eq_rows:
                             deduped = list({r["symbol"]: r for r in eq_rows}.values())
+                            deduped = _apply_prev_price(deduped, "equity_india_prices")
                             service_upsert("equity_india_prices", deduped, conflict_col="symbol")
                             _updated += len(deduped)
 

@@ -11,11 +11,13 @@ _FAMILY  = {"Vinay", "Harsh", "Anusha"}
 
 
 def _market_closed() -> bool:
-    """True if NSE market is currently closed (after 3:30 PM IST or weekend)."""
+    """True if NSE market is closed — before 8 AM IST, after 3:30 PM IST, or weekend."""
     now = datetime.datetime.now(_IST_TZ)
-    if now.weekday() >= 5:
+    if now.weekday() >= 5:          # Saturday / Sunday
         return True
-    return now >= now.replace(hour=15, minute=30, second=0, microsecond=0)
+    open_time  = now.replace(hour=8,  minute=0,  second=0, microsecond=0)
+    close_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return now < open_time or now >= close_time
 
 
 def _record_history_snapshot() -> tuple[dict, dict]:
@@ -311,23 +313,29 @@ def render_sidebar():
                     st.session_state["_wl_errors"] = wl_errors
 
                     # ── History snapshot check ─────────────────────────
-                    # Always check when manually refreshed — no market-hours
-                    # restriction (user is making an explicit call to catch up)
+                    # Only record outside market hours (before 8 AM or
+                    # after 3:30 PM IST, or weekends) to avoid mid-day
+                    # snapshots capturing intra-day prices.
                     _today_str = datetime.datetime.now(_IST_TZ).date().isoformat()
-                    _existing  = fetch_one("portfolio_history", "date", _today_str)
-                    if _existing:
-                        _hist_status = ("info",
-                            f"📅 History for {_today_str} already recorded.")
+                    if _market_closed():
+                        _existing = fetch_one("portfolio_history", "date", _today_str)
+                        if _existing:
+                            _hist_status = ("info",
+                                f"📅 History for {_today_str} already recorded.")
+                        else:
+                            try:
+                                _frow, _ = _record_history_snapshot()
+                                from utils.fmt import ind_num
+                                _hist_status = ("success",
+                                    f"📅 History snapshot saved for {_today_str}  "
+                                    f"(Total CV: {ind_num(_frow['total_cv'])})")
+                            except Exception as _he:
+                                _hist_status = ("warning",
+                                    f"📅 History snapshot failed: {_he}")
                     else:
-                        try:
-                            _frow, _ = _record_history_snapshot()
-                            from utils.fmt import ind_num
-                            _hist_status = ("success",
-                                f"📅 History snapshot saved for {_today_str}  "
-                                f"(Total CV: {ind_num(_frow['total_cv'])})")
-                        except Exception as _he:
-                            _hist_status = ("warning",
-                                f"📅 History snapshot failed: {_he}")
+                        _hist_status = ("info",
+                            "⏳ History not updated — refresh after 3:30 PM IST "
+                            "to record today's closing snapshot.")
                     st.session_state["_hist_status"] = _hist_status
 
                     st.success(f"✅ Prices updated ({_updated} securities).")

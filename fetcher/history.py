@@ -7,17 +7,34 @@ import datetime
 from db import get_client, upsert, fetch_cfg
 
 IST      = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+OPEN_HR  = 9
 CLOSE_HR = 15
 CLOSE_MN = 30
 
 
 def market_is_closed() -> bool:
-    """True if NSE market is currently closed."""
+    """True if NSE market is currently closed (before 9 AM or after 3:30 PM IST, or weekend).
+    Handles GitHub Actions runs that fire at ~3 AM IST the following morning."""
     now = datetime.datetime.now(IST)
-    if now.weekday() >= 5:          # Saturday / Sunday
+    if now.weekday() >= 5:
         return True
+    open_time  = now.replace(hour=OPEN_HR,  minute=0,       second=0, microsecond=0)
     close_time = now.replace(hour=CLOSE_HR, minute=CLOSE_MN, second=0, microsecond=0)
-    return now >= close_time
+    return now < open_time or now >= close_time
+
+
+def snapshot_date() -> str:
+    """Date to stamp on the history row.
+    If running before 9 AM IST, use the previous trading day — GitHub Actions
+    fires at ~3 AM IST (delayed from its 4:05 PM schedule), so prices in the DB
+    are yesterday's closing prices."""
+    now = datetime.datetime.now(IST)
+    d   = now.date()
+    if now.hour < OPEN_HR:
+        d -= datetime.timedelta(days=1)
+        while d.weekday() >= 5:          # skip back over weekends
+            d -= datetime.timedelta(days=1)
+    return d.isoformat()
 
 
 def get_latest_prices() -> dict:
@@ -33,7 +50,7 @@ def get_latest_prices() -> dict:
 _FAMILY = {"Vinay", "Harsh", "Anusha"}   # owners included in family portfolio history
 
 
-def compute_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
+def compute_snapshot(eq_prices: dict, mf_navs: dict, date: str) -> dict:
     eq_invested = eq_cv = 0.0
 
     for h in fetch_cfg("cfg_equity_india"):
@@ -66,7 +83,7 @@ def compute_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
     ret_pct   = round((gain / total_inv * 100), 4) if total_inv > 0 else 0
 
     return {
-        "date":           datetime.date.today().isoformat(),
+        "date":           date,
         "shares_invested": round(eq_invested, 2),
         "shares_cv":       round(eq_cv, 2),
         "mf_inv_vinay":    mf_data["vinay"]["invested"],
@@ -82,7 +99,7 @@ def compute_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
     }
 
 
-def compute_mom_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
+def compute_mom_snapshot(eq_prices: dict, mf_navs: dict, date: str) -> dict:
     eq_invested = eq_cv = 0.0
     for h in fetch_cfg("cfg_equity_india", owner="Mom"):
         sym   = h.get("symbol", "").upper()
@@ -109,7 +126,7 @@ def compute_mom_snapshot(eq_prices: dict, mf_navs: dict) -> dict:
     ret_pct   = round((gain / total_inv * 100), 4) if total_inv > 0 else 0
 
     return {
-        "date":          datetime.date.today().isoformat(),
+        "date":          date,
         "eq_invested":   round(eq_invested, 2),
         "eq_cv":         round(eq_cv, 2),
         "mf_invested":   round(mf_invested, 2),
@@ -127,11 +144,12 @@ def record_history():
         print(f"\n⏳  Market open ({now}) — history skipped. Run again after 3:30 PM IST.")
         return
 
-    print(f"\n📅  Market closed — recording portfolio snapshot…")
+    date = snapshot_date()
+    print(f"\n📅  Market closed — recording portfolio snapshot for {date}…")
     eq_prices, mf_navs = get_latest_prices()
 
     # Family snapshot
-    row = compute_snapshot(eq_prices, mf_navs)
+    row = compute_snapshot(eq_prices, mf_navs, date)
     upsert("portfolio_history", [row], conflict_col="date")
     print(f"   ✅  Family snapshot for {row['date']} saved")
     print(f"   Total Invested: ₹{row['total_invested']:>14,.2f}")
@@ -139,7 +157,7 @@ def record_history():
     print(f"   Gain/Loss:      ₹{row['gain_loss']:>14,.2f}  ({row['return_pct']:.2f}%)")
 
     # Mom snapshot
-    mom_row = compute_mom_snapshot(eq_prices, mf_navs)
+    mom_row = compute_mom_snapshot(eq_prices, mf_navs, date)
     upsert("portfolio_history_mom", [mom_row], conflict_col="date")
     print(f"   ✅  Mom snapshot for {mom_row['date']} saved")
     print(f"   Total Invested: ₹{mom_row['total_invested']:>14,.2f}")

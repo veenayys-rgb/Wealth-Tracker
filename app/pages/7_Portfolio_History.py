@@ -73,8 +73,21 @@ def chart_and_table(chart_df, label_inv, label_cv, date_col="date", tab_key=""):
         inv_vals = plot_df[label_inv]
         cv_vals  = plot_df[label_cv]
 
-        y_min = min(inv_vals.min(), cv_vals.min()) * 0.995
-        y_max = max(inv_vals.max(), cv_vals.max()) * 1.005
+        cv_var  = float(cv_vals.max()  - cv_vals.min())
+        inv_var = float(inv_vals.max() - inv_vals.min())
+        if inv_var < cv_var * 0.2:
+            # Invested stable — zoom Y-axis to CV movement only
+            pad   = max(cv_var * 0.15, float(cv_vals.mean()) * 0.003)
+            y_min = float(cv_vals.min()) - pad
+            y_max = float(cv_vals.max()) + pad
+        else:
+            # Both lines moving — show full range of both
+            y_min_raw = min(float(inv_vals.min()), float(cv_vals.min()))
+            y_max_raw = max(float(inv_vals.max()), float(cv_vals.max()))
+            spread    = y_max_raw - y_min_raw
+            pad       = spread * 0.05
+            y_min     = y_min_raw - pad
+            y_max     = y_max_raw + pad
         tickvals, ticktext = indian_axis_ticks(y_min, y_max)
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(x=dates, y=inv_vals, mode="lines+markers",

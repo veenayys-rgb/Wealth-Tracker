@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-from utils.sidebar import render_sidebar
+from utils.sidebar import render_sidebar, refresh_watchlist_prices
 import pandas as pd
 from utils.db     import fetch
 from utils.config import load, save
@@ -12,6 +12,15 @@ from utils.fmt    import utc_to_ist
 st.set_page_config(page_title="Watchlist | Wealth Tracker", page_icon="👀", layout="wide")
 st.title("👀 Watchlist")
 render_sidebar()
+
+if st.button("🔄 Refresh Watchlist", key="refresh_wl", use_container_width=True):
+    with st.spinner("Fetching 52-week data…"):
+        saved, total, errors = refresh_watchlist_prices()
+        if errors:
+            for err in errors:
+                st.warning(f"⚠️ {err}")
+        st.success(f"✅ Updated {saved}/{total} watchlist symbols.")
+        st.rerun()
 
 wp        = {r["symbol"]: r for r in fetch("watchlist_prices")}
 items     = load("watchlist.json")

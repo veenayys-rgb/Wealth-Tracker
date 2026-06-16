@@ -247,6 +247,50 @@ def refresh_intl_equity_prices() -> tuple[int, int]:
     return len(rows), total
 
 
+def refresh_watchlist_prices() -> tuple[int, int, list[str]]:
+    """Fetch 52-week data for all watchlist symbols. Returns (saved, total, errors)."""
+    items = load("watchlist.json")
+    if not items:
+        return 0, 0, []
+    total = len(items)
+    by_region: dict = {}
+    for item in items:
+        by_region.setdefault(item.get("region", "Other"), []).append(item)
+    wl_rows, errors = [], []
+    for region, group in by_region.items():
+        suffix  = SUFFIX.get(region, "")
+        tickers = [f"{i['symbol'].upper()}{suffix}" for i in group]
+        try:
+            raw   = yf.download(tickers, period="1y", auto_adjust=True,
+                                progress=False, group_by="ticker", threads=True)
+            multi = len(tickers) > 1
+            for item, t in zip(group, tickers):
+                sym = item["symbol"].upper()
+                try:
+                    closes = raw[t]["Close"].dropna() if multi else raw["Close"].dropna()
+                    highs  = raw[t]["High"].dropna()  if multi else raw["High"].dropna()
+                    lows   = raw[t]["Low"].dropna()   if multi else raw["Low"].dropna()
+                    if len(closes) > 0:
+                        wl_rows.append({
+                            "symbol":        sym,
+                            "last_close":    round(float(closes.iloc[-1]), 4),
+                            "current_price": round(float(closes.iloc[-1]), 4),
+                            "high_52w":      round(float(highs.max()), 4),
+                            "low_52w":       round(float(lows.min()), 4),
+                            "fetched_at":    datetime.datetime.utcnow().isoformat(),
+                        })
+                    else:
+                        errors.append(f"{sym}: no data returned")
+                except Exception as e:
+                    errors.append(f"{sym}: {e}")
+        except Exception as e:
+            errors.append(f"Region {region}: {e}")
+    if wl_rows:
+        deduped = list({r["symbol"]: r for r in wl_rows}.values())
+        service_upsert("watchlist_prices", deduped, conflict_col="symbol")
+    return len(wl_rows), total, errors
+
+
 _MOBILE_CSS = """
 <style>
 @media (max-width: 768px) {
@@ -412,45 +456,9 @@ def render_sidebar():
                             pass
 
                     # Watchlist
-                    holdings_wl = load("watchlist.json")
-                    wl_errors = []
-                    if holdings_wl:
-                        by_region: dict = {}
-                        for item in holdings_wl:
-                            by_region.setdefault(item.get("region", "Other"), []).append(item)
-                        wl_rows = []
-                        for region, group in by_region.items():
-                            suffix  = SUFFIX.get(region, "")
-                            tickers = [f"{i['symbol'].upper()}{suffix}" for i in group]
-                            try:
-                                raw   = yf.download(tickers, period="1y", auto_adjust=True,
-                                                    progress=False, group_by="ticker", threads=True)
-                                for item, t in zip(group, tickers):
-                                    sym = item["symbol"].upper()
-                                    try:
-                                        closes = raw[t]["Close"].dropna()
-                                        highs  = raw[t]["High"].dropna()
-                                        lows   = raw[t]["Low"].dropna()
-                                        if len(closes) > 0:
-                                            wl_rows.append({
-                                                "symbol":        sym,
-                                                "last_close":    round(float(closes.iloc[-1]), 4),
-                                                "current_price": round(float(closes.iloc[-1]), 4),
-                                                "high_52w":      round(float(highs.max()), 4),
-                                                "low_52w":       round(float(lows.min()), 4),
-                                                "fetched_at":    datetime.datetime.utcnow().isoformat(),
-                                            })
-                                        else:
-                                            wl_errors.append(f"{sym}: no data returned (ticker={t})")
-                                    except Exception as e:
-                                        wl_errors.append(f"{sym}: {e}")
-                            except Exception as e:
-                                wl_errors.append(f"Region {region} download failed: {e}")
-                        if wl_rows:
-                            deduped = list({r["symbol"]: r for r in wl_rows}.values())
-                            service_upsert("watchlist_prices", deduped, conflict_col="symbol")
-                            _updated += len(deduped)
-                    st.session_state["_wl_errors"] = wl_errors
+                    _wl_saved, _, _wl_errors = refresh_watchlist_prices()
+                    _updated += _wl_saved
+                    st.session_state["_wl_errors"] = _wl_errors
 
                     # ── History snapshot — always record on manual refresh ──
                     _today_str = datetime.datetime.now(_IST_TZ).date().isoformat()

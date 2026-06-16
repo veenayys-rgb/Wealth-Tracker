@@ -3,15 +3,44 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-from utils.sidebar import render_sidebar
+from utils.sidebar import render_sidebar, record_history_snapshot
+import datetime
 import pandas as pd
 import plotly.graph_objects as go
 from utils.db  import fetch, service_delete
 from utils.fmt import ind_num, indian_axis_ticks
 
+_IST_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
 st.set_page_config(page_title="Portfolio History | Wealth Tracker", page_icon="📅", layout="wide")
 st.title("📅 Portfolio History")
 render_sidebar()
+
+# ── Manual snapshot button ────────────────────────────────────────────────────
+with st.expander("📸 Record Today's Snapshot", expanded=False):
+    st.caption("Records a snapshot using the latest prices/NAVs already in the database. "
+               "Use this if the automatic 4 PM run was missed.")
+    _now_ist = datetime.datetime.now(_IST_TZ)
+    _market_open = (
+        _now_ist.weekday() < 5
+        and _now_ist.replace(hour=8, minute=0, second=0, microsecond=0)
+        <= _now_ist
+        < _now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+    )
+    if _market_open:
+        st.warning("⚠️ Market is currently open — snapshot will use intra-day prices, not closing prices. "
+                   "For an accurate closing snapshot, refresh after 3:30 PM IST.")
+    if st.button("📸 Record Snapshot Now", type="primary", use_container_width=True):
+        with st.spinner("Computing portfolio snapshot…"):
+            try:
+                frow, _ = record_history_snapshot()
+                today_str = _now_ist.date().isoformat()
+                st.success(f"✅ Snapshot saved for {today_str}  |  "
+                           f"Total CV: {ind_num(frow['total_cv'])}  |  "
+                           f"G/L: {ind_num(frow['gain_loss'])}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to record snapshot: {e}")
 
 rows = fetch("portfolio_history")
 if not rows:

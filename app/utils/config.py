@@ -47,7 +47,7 @@ def _write_client() -> Client:
 
 def load(filename: str) -> list:
     table, owner = TABLE_MAP[filename]
-    q = _client().table(table).select("*")
+    q = _write_client().table(table).select("*")
     if owner:
         q = q.eq("owner", owner)
     rows = q.order("id").execute().data

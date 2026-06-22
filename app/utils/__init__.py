@@ -2,4 +2,4 @@
 # utils module (db.py, fmt.py, sidebar.py, config.py).
 # Streamlit Cloud detects this file changing and does a full cold restart,
 # clearing the Python module cache so new imports are always found.
-__version__ = "1.8"
+__version__ = "1.9"

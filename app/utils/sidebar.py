@@ -587,3 +587,4 @@ def render_sidebar():
             elif typ == "warning": st.warning(msg)
             else: st.info(msg)
         st.markdown("---")
+

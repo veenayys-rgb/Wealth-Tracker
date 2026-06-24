@@ -77,30 +77,25 @@ def _day_view_india(dv_holdings, show_owner: str | None = None):
         rows.append(row)
 
     df_dv  = pd.DataFrame(rows).sort_values("Day %", ascending=False, na_position="last")
-    money  = ["Invested", "Price", "Value", "G/L", "Prev Close", "Day G/L"]
-    fmt_dv = {c: (lambda v: ind_num(v) if v is not None else "—") for c in money}
-    fmt_dv["Qty"]   = lambda v: f"{v:,.2f}" if v is not None else "—"
-    fmt_dv["Day %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
 
     col_cfg = {
         "Company":    st.column_config.TextColumn("Company"),
-        "Qty":        st.column_config.TextColumn("Qty"),
-        "Invested":   st.column_config.TextColumn("Invested"),
-        "Price":      st.column_config.TextColumn("Price"),
-        "Value":      st.column_config.TextColumn("Value"),
-        "G/L":        st.column_config.TextColumn("G/L"),
-        "Prev Close": st.column_config.TextColumn("Prev Close"),
-        "Day G/L":    st.column_config.TextColumn("Day G/L"),
-        "Day %":      st.column_config.TextColumn("Day %"),
+        "Qty":        st.column_config.NumberColumn("Qty",        format="%.2f"),
+        "Invested":   st.column_config.NumberColumn("Invested",   format="₹%.0f"),
+        "Price":      st.column_config.NumberColumn("Price",      format="₹%.2f"),
+        "Value":      st.column_config.NumberColumn("Value",      format="₹%.0f"),
+        "G/L":        st.column_config.NumberColumn("G/L",        format="₹%.0f"),
+        "Prev Close": st.column_config.NumberColumn("Prev Close", format="₹%.2f"),
+        "Day G/L":    st.column_config.NumberColumn("Day G/L",    format="₹%.0f"),
+        "Day %":      st.column_config.NumberColumn("Day %",      format="%.2f%%"),
     }
     if show_owner:
         col_cfg = {"Owner": st.column_config.TextColumn("Owner"), **col_cfg}
 
     st.dataframe(
-        df_dv.style.format(fmt_dv)
-             .map(lambda v: "color:green" if isinstance(v, float) and v >= 0
-                       else "color:red"   if isinstance(v, float) and v <  0
-                       else "", subset=["G/L", "Day G/L", "Day %"]),
+        df_dv.style.map(lambda v: "color:green" if isinstance(v, float) and v > 0
+                              else "color:red"   if isinstance(v, float) and v < 0
+                              else "", subset=["G/L", "Day G/L", "Day %"]),
         use_container_width=True, hide_index=True, column_config=col_cfg,
     )
     total_inv = sum(r["Invested"] for r in rows)
@@ -413,28 +408,23 @@ with tab_all:
                     "Day G/L":    day_gl,
                     "Day %":      day_pct,
                 })
-            df_dv  = pd.DataFrame(dv_rows).sort_values("Day %", ascending=False, na_position="last")
-            money  = ["Invested", "Price", "Value", "G/L", "Prev Close", "Day G/L"]
-            fmt_dv = {c: (lambda v: ind_num(v) if v is not None else "—") for c in money}
-            fmt_dv["Qty"]   = lambda v: f"{v:,.2f}" if v is not None else "—"
-            fmt_dv["Day %"] = lambda v: f"{v:+.2f}%" if v is not None else "—"
+            df_dv = pd.DataFrame(dv_rows).sort_values("Day %", ascending=False, na_position="last")
             st.dataframe(
-                df_dv.style.format(fmt_dv)
-                     .map(lambda v: "color:green" if isinstance(v, float) and v >= 0
-                               else "color:red"   if isinstance(v, float) and v <  0
-                               else "", subset=["G/L", "Day G/L", "Day %"]),
+                df_dv.style.map(lambda v: "color:green" if isinstance(v, float) and v > 0
+                                      else "color:red"   if isinstance(v, float) and v < 0
+                                      else "", subset=["G/L", "Day G/L", "Day %"]),
                 use_container_width=True, hide_index=True,
                 column_config={
                     "Owner":      st.column_config.TextColumn("Owner"),
                     "Company":    st.column_config.TextColumn("Company"),
-                    "Qty":        st.column_config.TextColumn("Qty"),
-                    "Invested":   st.column_config.TextColumn("Invested"),
-                    "Price":      st.column_config.TextColumn("Price"),
-                    "Value":      st.column_config.TextColumn("Value"),
-                    "G/L":        st.column_config.TextColumn("G/L"),
-                    "Prev Close": st.column_config.TextColumn("Prev Close"),
-                    "Day G/L":    st.column_config.TextColumn("Day G/L"),
-                    "Day %":      st.column_config.TextColumn("Day %"),
+                    "Qty":        st.column_config.NumberColumn("Qty",        format="%.2f"),
+                    "Invested":   st.column_config.NumberColumn("Invested",   format="₹%.0f"),
+                    "Price":      st.column_config.NumberColumn("Price",      format="₹%.2f"),
+                    "Value":      st.column_config.NumberColumn("Value",      format="₹%.0f"),
+                    "G/L":        st.column_config.NumberColumn("G/L",        format="₹%.0f"),
+                    "Prev Close": st.column_config.NumberColumn("Prev Close", format="₹%.2f"),
+                    "Day G/L":    st.column_config.NumberColumn("Day G/L",    format="₹%.0f"),
+                    "Day %":      st.column_config.NumberColumn("Day %",      format="%.2f%%"),
                 },
             )
             total_inv = sum(r["Invested"] for r in dv_rows)

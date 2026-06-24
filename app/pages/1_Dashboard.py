@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-from utils.sidebar import render_sidebar
+from utils.sidebar import render_sidebar, render_index_bar
 import pandas as pd
 from utils.db     import fetch, get_forex, fetch_latest_ts
 from utils.config import load
@@ -12,6 +12,7 @@ from utils.fmt    import ind_num, pct, metric_card, utc_to_ist
 st.set_page_config(page_title="Dashboard | Wealth Tracker", page_icon="📊", layout="wide")
 st.title("📊 Dashboard")
 render_sidebar()
+render_index_bar()
 
 # ── Forex + Market Indices ────────────────────────────────────────────────────
 forex   = get_forex()

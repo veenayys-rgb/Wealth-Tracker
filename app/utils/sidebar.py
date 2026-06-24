@@ -10,6 +10,104 @@ _IST_TZ  = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 _FAMILY  = {"Vinay", "Harsh", "Anusha"}
 
 
+@st.cache_data(ttl=300)
+def _fetch_index_levels() -> dict:
+    """Fetch Nifty50 and Sensex with prev close. Cached 5 min."""
+    ssl._create_default_https_context = ssl._create_unverified_context
+    result = {}
+    for name, ticker in [("NIFTY50", "^NSEI"), ("SENSEX", "^BSESN")]:
+        try:
+            raw    = yf.download(ticker, period="2d", auto_adjust=True, progress=False)
+            closes = raw["Close"].dropna()
+            if len(closes) >= 2:
+                curr = round(float(closes.iloc[-1]), 2)
+                prev = round(float(closes.iloc[-2]), 2)
+                result[name] = {"current": curr, "change": round(curr - prev, 2),
+                                "change_pct": round((curr - prev) / prev * 100, 2)}
+            elif len(closes) == 1:
+                result[name] = {"current": round(float(closes.iloc[-1]), 2),
+                                "change": None, "change_pct": None}
+            else:
+                result[name] = None
+        except Exception:
+            result[name] = None
+    return result
+
+
+def render_index_bar():
+    """Render Nifty50/Sensex bar. Falls back to forex_rates table if yfinance unavailable."""
+    levels = _fetch_index_levels()
+
+    # Fallback to stored forex_rates if yfinance returned nothing
+    if any(levels.get(k) is None for k in ["NIFTY50", "SENSEX"]):
+        try:
+            stored = {r["pair"]: r for r in fetch("forex_rates")}
+            for name in ["NIFTY50", "SENSEX"]:
+                if levels.get(name) is None and name in stored:
+                    from utils.fmt import utc_to_ist
+                    levels[name] = {
+                        "current":     round(float(stored[name]["rate"]), 2),
+                        "change":      None,
+                        "change_pct":  None,
+                        "fallback_ts": utc_to_ist(stored[name].get("fetched_at")),
+                    }
+        except Exception:
+            pass
+
+    now_str = datetime.datetime.now(_IST_TZ).strftime("%d-%b-%Y  %I:%M %p IST")
+
+    def _block(label, data):
+        if data is None:
+            return (f'<div class="idx-block"><span class="idx-lbl">{label}</span>'
+                    f'<span class="idx-lvl">—</span></div>')
+        lvl = f"{data['current']:,.0f}"
+        if data.get("change") is not None:
+            ch, pct = data["change"], data["change_pct"]
+            sign  = "+" if ch >= 0 else ""
+            color = "#1A7A4A" if ch >= 0 else "#C0392B"
+            icon  = "ti-trending-up" if ch >= 0 else "ti-trending-down"
+            ch_html = (f'<span class="idx-chg" style="color:{color}">'
+                       f'<i class="ti {icon}" aria-hidden="true"></i>'
+                       f' {sign}{ch:,.0f} pts ({sign}{pct:.2f}%)</span>')
+        else:
+            ch_html = '<span class="idx-nodata">no change data</span>'
+        return (f'<div class="idx-block"><span class="idx-lbl">{label}</span>'
+                f'<span class="idx-lvl">{lvl}</span>{ch_html}</div>')
+
+    # Timestamp: prefer fallback_ts if both are fallbacks, else current fetch time
+    fb_ts = None
+    for k in ["NIFTY50", "SENSEX"]:
+        d = levels.get(k) or {}
+        if d.get("fallback_ts"):
+            fb_ts = d["fallback_ts"]
+            break
+    ts_label = f"Last fetched: {fb_ts}" if fb_ts else now_str
+
+    n_html = _block("NIFTY 50", levels.get("NIFTY50"))
+    s_html = _block("SENSEX",   levels.get("SENSEX"))
+
+    st.markdown(f"""
+<style>
+.idx-bar{{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);
+border-radius:8px;padding:0.65rem 1.25rem;display:flex;align-items:center;gap:2rem;
+flex-wrap:wrap;margin-bottom:0.75rem;}}
+.idx-block{{display:flex;align-items:baseline;gap:0.6rem;}}
+.idx-lbl{{font-size:13px;font-weight:500;color:var(--color-text-secondary);}}
+.idx-lvl{{font-size:20px;font-weight:500;color:var(--color-text-primary);}}
+.idx-chg{{font-size:14px;font-weight:500;}}
+.idx-chg i{{font-size:15px;vertical-align:-2px;}}
+.idx-nodata{{font-size:13px;color:var(--color-text-tertiary);}}
+.idx-div{{width:0.5px;height:28px;background:var(--color-border-tertiary);flex-shrink:0;}}
+.idx-ts{{margin-left:auto;font-size:11px;color:var(--color-text-tertiary);white-space:nowrap;}}
+</style>
+<div class="idx-bar">
+  {n_html}
+  <div class="idx-div"></div>
+  {s_html}
+  <div class="idx-ts">{ts_label}</div>
+</div>""", unsafe_allow_html=True)
+
+
 def _market_closed() -> bool:
     """True if NSE market is closed — before 8 AM IST, after 3:30 PM IST, or weekend."""
     now = datetime.datetime.now(_IST_TZ)

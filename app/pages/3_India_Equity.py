@@ -3,7 +3,7 @@ import sys, os, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-from utils.sidebar import render_sidebar, refresh_india_equity_prices
+from utils.sidebar import render_sidebar, refresh_india_equity_prices, render_index_bar
 import pandas as pd
 from utils.db     import fetch, service_upsert
 from utils.config import load, save
@@ -19,6 +19,8 @@ prev_prices = {r["symbol"]: float(r["prev_price"]) for r in prices_rows if r.get
 last_fetch  = utc_to_ist(max((r["fetched_at"] for r in prices_rows), default=None)) if prices_rows else "—"
 prev_dates  = [r["prev_price_date"] for r in prices_rows if r.get("prev_price_date")]
 prev_label  = fmt_date(max(prev_dates)) if prev_dates else "—"
+
+render_index_bar()
 
 # ── Refresh button ──────────────────────────────────────────────────────────
 _rc, _cc = st.columns([1, 4])

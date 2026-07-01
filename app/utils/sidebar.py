@@ -17,8 +17,7 @@ def _fetch_index_levels() -> dict:
     result = {}
     for name, ticker in [("NIFTY50", "^NSEI"), ("SENSEX", "^BSESN")]:
         try:
-            raw    = yf.download(ticker, period="2d", auto_adjust=True, progress=False)
-            closes = raw["Close"].dropna()
+            closes = yf.Ticker(ticker).history(period="5d")["Close"].dropna()
             if len(closes) >= 2:
                 curr = round(float(closes.iloc[-1]), 2)
                 prev = round(float(closes.iloc[-2]), 2)

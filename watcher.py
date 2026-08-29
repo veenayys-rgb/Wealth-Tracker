@@ -23,12 +23,25 @@ def stamp():
     return datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
 
 
+def _read_service_key() -> str:
+    """Read service_key from .streamlit/secrets.toml."""
+    import re
+    secrets = os.path.join(ICLOUD, ".streamlit", "secrets.toml")
+    try:
+        m = re.search(r'service_key\s*=\s*"([^"]+)"', open(secrets).read())
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
 def run_fetcher(reason: str):
     print(f"\n🔔  {reason} — {stamp()}")
     print("▶️   Running fetcher/run.py...")
     print("─" * 60)
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(ICLOUD, "fetcher")
+    if not env.get("SUPABASE_SERVICE_KEY"):
+        env["SUPABASE_SERVICE_KEY"] = _read_service_key()
     subprocess.run([PYTHON, FETCHER], env=env)
     print("─" * 60)
     print(f"✅  Done — watching again...\n")

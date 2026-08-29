@@ -24,17 +24,19 @@ def refresh_navs_from_amfi(isins: list[str]) -> tuple[int, int]:
     resp  = urllib.request.urlopen(AMFI_URL, timeout=30, context=ctx)
     lines = resp.read().decode("utf-8", errors="ignore").splitlines()
 
+    # AMFI NAVAll.txt format (8 columns as of Aug 2025):
+    #   Code; ISIN Growth; ISIN Div-Reinv; Scheme Name; Plan; Option; NAV; Date
     amfi_index: dict[str, dict] = {}
     for line in lines:
         parts = line.strip().split(";")
-        if len(parts) < 6:
+        if len(parts) < 8:
             continue
         try:
-            nav  = float(parts[4].strip())
+            nav  = float(parts[6].strip())
             name = parts[3].strip()
-            date = parts[5].strip()
+            date = parts[7].strip()
             for isin in [parts[1].strip().upper(), parts[2].strip().upper()]:
-                if isin:
+                if isin and isin != "-":
                     amfi_index[isin] = {"nav": nav, "name": name, "date": date}
         except (ValueError, IndexError):
             pass

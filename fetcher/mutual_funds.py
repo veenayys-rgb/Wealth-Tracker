@@ -35,17 +35,19 @@ def fetch_amfi_navs() -> tuple[int, int]:
         return 0, len(all_isins)
 
     # Build ISIN → {nav, name, date} index
+    # AMFI NAVAll.txt has 8 columns (as of 2025):
+    #   Code; ISIN Growth; ISIN Div-Reinv; Scheme Name; Plan; Option; NAV; Date
     amfi_index: dict[str, dict] = {}
     for line in lines:
         parts = line.strip().split(";")
-        if len(parts) < 6:
+        if len(parts) < 8:
             continue
         try:
-            nav      = float(parts[4].strip())
+            nav      = float(parts[6].strip())
             name     = parts[3].strip()
-            nav_date = parts[5].strip()
+            nav_date = parts[7].strip()
             for isin in [parts[1].strip().upper(), parts[2].strip().upper()]:
-                if isin:
+                if isin and isin != "-":
                     amfi_index[isin] = {"nav": nav, "name": name, "date": nav_date}
         except (ValueError, IndexError):
             pass

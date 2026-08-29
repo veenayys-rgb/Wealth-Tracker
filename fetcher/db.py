@@ -1,9 +1,18 @@
 """Supabase client — used by all fetchers."""
-import os
+import os, pathlib
 from supabase import create_client, Client
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://bopqwksvunejedhgdvxv.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")   # service key — set in env
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
+# Fall back to .streamlit/secrets.toml when running outside watcher/GitHub Actions
+if not SUPABASE_KEY:
+    _secrets = pathlib.Path(__file__).parents[1] / ".streamlit" / "secrets.toml"
+    if _secrets.exists():
+        import re
+        _m = re.search(r'service_key\s*=\s*"([^"]+)"', _secrets.read_text())
+        if _m:
+            SUPABASE_KEY = _m.group(1)
 
 _client: Client | None = None
 

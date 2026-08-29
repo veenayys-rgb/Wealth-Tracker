@@ -2,7 +2,7 @@ name: Daily Portfolio Fetch
 
 on:
   schedule:
-    - cron: "35 10 * * 1-5"   # 4:05 PM IST (10:35 UTC) Mon-Fri
+    - cron: "30 17 * * 1-5"   # 11:00 PM IST (17:30 UTC) Mon-Fri
   workflow_dispatch:            # allow manual run from GitHub Actions tab
 
 jobs:

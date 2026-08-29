@@ -519,17 +519,19 @@ def render_sidebar():
                             resp  = urllib.request.urlopen(
                                 "https://www.amfiindia.com/spages/NAVAll.txt", timeout=30, context=ctx)
                             lines = resp.read().decode("utf-8", errors="ignore").splitlines()
+                            # AMFI NAVAll.txt format (8 cols as of Aug 2025):
+                            # Code; ISIN Growth; ISIN Div-Reinv; Name; Plan; Option; NAV; Date
                             amfi  = {}
                             for line in lines:
                                 parts = line.strip().split(";")
-                                if len(parts) < 6:
+                                if len(parts) < 8:
                                     continue
                                 try:
-                                    nav  = float(parts[4].strip())
+                                    nav  = float(parts[6].strip())
                                     for isin in [parts[1].strip().upper(), parts[2].strip().upper()]:
-                                        if isin:
+                                        if isin and isin != "-":
                                             amfi[isin] = {"nav": nav, "name": parts[3].strip(),
-                                                          "date": parts[5].strip()}
+                                                          "date": parts[7].strip()}
                                 except (ValueError, IndexError):
                                     pass
                             def _iso(s):

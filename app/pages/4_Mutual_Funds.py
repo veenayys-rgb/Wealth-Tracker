@@ -257,6 +257,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         nav_val = float(navs.get(isin, {}).get("nav", 0) or 0)
                         qe_rows.append({
                             "☑":               False,
+                            "ISIN":            isin,
                             "Fund Name (AMFI)": amfi,
                             "Units Held":       float(h.get("units", 0)),
                             "Avg NAV (₹)":      float(h.get("avg_nav", 0)),
@@ -266,6 +267,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         pd.DataFrame(qe_rows),
                         column_config={
                             "☑":               st.column_config.CheckboxColumn("☑", width="small"),
+                            "ISIN":            st.column_config.TextColumn(disabled=True),
                             "Fund Name (AMFI)": st.column_config.TextColumn(disabled=True, width="large"),
                             "Units Held":       st.column_config.NumberColumn(format="%.3f", min_value=0.0),
                             "Avg NAV (₹)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),

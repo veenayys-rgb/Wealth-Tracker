@@ -19,14 +19,15 @@ pg = st.navigation({
         st.Page("pages/5_International_Equity.py", title="International Equity", icon="🌍"),
         st.Page("pages/6_Watchlist.py",            title="Watchlist",            icon="👀"),
         st.Page("pages/7_Portfolio_History.py",    title="Portfolio History",    icon="📅"),
-        st.Page("pages/8_Bank_Accounts.py",        title="Bank Accounts",        icon="🏦"),
-        st.Page("pages/9_Fixed_Deposits.py",       title="Fixed Deposits",       icon="🏛"),
-        st.Page("pages/10_Insurance.py",           title="Insurance",            icon="🛡"),
-        st.Page("pages/11_MF_Recon.py",            title="MF Recon",             icon="🔁"),
-        st.Page("pages/12_Equity_Recon.py",        title="Equity Recon",         icon="🔍"),
+        st.Page("pages/8_Dashboard_History.py",    title="Dashboard History",    icon="📸"),
+        st.Page("pages/9_Bank_Accounts.py",        title="Bank Accounts",        icon="🏦"),
+        st.Page("pages/10_Fixed_Deposits.py",      title="Fixed Deposits",       icon="🏛"),
+        st.Page("pages/11_Insurance.py",           title="Insurance",            icon="🛡"),
+        st.Page("pages/12_MF_Recon.py",            title="MF Recon",             icon="🔁"),
+        st.Page("pages/13_Equity_Recon.py",        title="Equity Recon",         icon="🔍"),
     ],
     "MOM": [
-        st.Page("pages/13_Mom_Portfolio.py",       title="Mom Portfolio",        icon="👩"),
+        st.Page("pages/14_Mom_Portfolio.py",       title="Mom Portfolio",        icon="👩"),
     ],
 })
 pg.run()

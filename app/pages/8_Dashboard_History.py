@@ -87,7 +87,7 @@ def _compute_snapshot() -> dict:
         # Bank India (INR)
         bank_in = 0.0
         for b in all_bank_in:
-            if b.get("owner") != owner:
+            if b.get("owner", "Vinay") != owner:
                 continue
             bank_in += float(b.get("balance", 0))
         snap[f"{p}_bank_india"] = bank_in
@@ -96,7 +96,7 @@ def _compute_snapshot() -> dict:
         bank_uae = 0.0
         if owner != "Mom":
             for b in all_bank_uae:
-                if b.get("owner") != owner:
+                if b.get("owner", "Vinay") != owner:
                     continue
                 bank_uae += float(b.get("balance_aed", 0)) * _fx(forex, b.get("currency", "AED"))
         snap[f"{p}_bank_uae"] = bank_uae
@@ -104,7 +104,7 @@ def _compute_snapshot() -> dict:
         # Fixed Deposits
         fd = 0.0
         for r in all_fd:
-            if r.get("owner") != owner:
+            if r.get("owner", "Vinay") != owner:
                 continue
             fd += float(r.get("amount", 0)) * _fx(forex, r.get("currency", "INR"))
         snap[f"{p}_fd"] = fd
@@ -113,7 +113,7 @@ def _compute_snapshot() -> dict:
         ins = 0.0
         if owner != "Mom":
             for r in all_ins:
-                if r.get("owner") != owner:
+                if r.get("owner", "Vinay") != owner:
                     continue
                 ins += float(r.get("surrender_value", 0)) * _fx(forex, r.get("currency", "INR"))
         snap[f"{p}_insurance"] = ins

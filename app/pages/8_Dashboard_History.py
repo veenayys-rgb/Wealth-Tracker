@@ -15,14 +15,15 @@ render_sidebar()
 
 _OWNERS = ["Vinay", "Harsh", "Anusha", "Mom"]
 _FAMILY = ["Vinay", "Harsh", "Anusha"]
-_CATS   = ["india_eq", "mf", "intl_eq", "bank", "fd", "insurance"]
+_CATS   = ["india_eq", "mf", "intl_eq", "bank_india", "bank_uae", "fd", "insurance"]
 _CAT_LABELS = {
-    "india_eq":  "India Equity",
-    "mf":        "Mutual Funds",
-    "intl_eq":   "Intl Equity",
-    "bank":      "Bank Accounts",
-    "fd":        "Fixed Deposits",
-    "insurance": "Insurance",
+    "india_eq":   "India Equity",
+    "mf":         "Mutual Funds",
+    "intl_eq":    "Intl Equity",
+    "bank_india": "Bank India",
+    "bank_uae":   "Bank UAE",
+    "fd":         "Fixed Deposits",
+    "insurance":  "Insurance",
 }
 
 
@@ -83,18 +84,22 @@ def _compute_snapshot() -> dict:
                 intl += qty * price * _fx(forex, curr) if price else qty * float(h.get("avg_cost", 0)) * _fx(forex, curr)
         snap[f"{p}_intl_eq"] = intl
 
-        # Bank — India (INR) + UAE (converted to INR); Mom has no UAE account
-        bank = 0.0
+        # Bank India (INR)
+        bank_in = 0.0
         for b in all_bank_in:
             if b.get("owner") != owner:
                 continue
-            bank += float(b.get("balance", 0))
+            bank_in += float(b.get("balance", 0))
+        snap[f"{p}_bank_india"] = bank_in
+
+        # Bank UAE (converted to INR; Mom has no UAE account)
+        bank_uae = 0.0
         if owner != "Mom":
             for b in all_bank_uae:
                 if b.get("owner") != owner:
                     continue
-                bank += float(b.get("balance_aed", 0)) * _fx(forex, b.get("currency", "AED"))
-        snap[f"{p}_bank"] = bank
+                bank_uae += float(b.get("balance_aed", 0)) * _fx(forex, b.get("currency", "AED"))
+        snap[f"{p}_bank_uae"] = bank_uae
 
         # Fixed Deposits
         fd = 0.0
@@ -124,6 +129,10 @@ def _grand_total(snap: dict, owners: list) -> float:
     return sum(_cat_sum(snap, owners, c) for c in _CATS)
 
 
+def _fmt_ts(ts: str) -> str:
+    return utc_to_ist(ts).replace(" IST", "")
+
+
 # ── Record Snapshot button ────────────────────────────────────────────────────
 
 btn_col, _ = st.columns([1, 5])
@@ -138,12 +147,12 @@ with btn_col:
                 st.error(f"Failed to record snapshot: {exc}")
 
 
-# ── Load snapshots (newest last for delta computation) ────────────────────────
+# ── Load snapshots ────────────────────────────────────────────────────────────
 
 _snaps = sorted(fetch("dashboard_snapshots"), key=lambda r: r["recorded_at"])
 
 
-# ── Tile + table renderers ────────────────────────────────────────────────────
+# ── Tile renderer ─────────────────────────────────────────────────────────────
 
 def _render_tiles(owners: list):
     if not _snaps:
@@ -152,24 +161,42 @@ def _render_tiles(owners: list):
     latest = _snaps[-1]
     prev   = _snaps[-2] if len(_snaps) >= 2 else None
 
-    cols = st.columns(6)
+    cols = st.columns(len(_CATS))
     for i, cat in enumerate(_CATS):
         val   = _cat_sum(latest, owners, cat)
         d_val = _cat_sum(latest, owners, cat) - _cat_sum(prev, owners, cat) if prev else None
-        cols[i].metric(
-            _CAT_LABELS[cat],
-            ind_num(val, decimals=0),
-            delta=ind_num(d_val) if d_val is not None and abs(d_val) > 0 else None,
+        delta_html = ""
+        if d_val is not None and abs(d_val) > 0:
+            color = "green" if d_val >= 0 else "red"
+            sign  = "+" if d_val >= 0 else ""
+            delta_html = (f'<div style="font-size:0.72rem;color:{color};margin-top:2px">'
+                          f'{sign}{ind_num(d_val, decimals=0)}</div>')
+        cols[i].markdown(
+            f'<div style="font-size:0.72rem;color:gray;font-weight:500;margin-bottom:2px">'
+            f'{_CAT_LABELS[cat]}</div>'
+            f'<div style="font-size:0.95rem;font-weight:600">{ind_num(val, decimals=0)}</div>'
+            f'{delta_html}',
+            unsafe_allow_html=True,
         )
 
     total   = _grand_total(latest, owners)
     d_total = total - _grand_total(prev, owners) if prev else None
-    st.metric(
-        "Grand Total",
-        ind_num(total),
-        delta=ind_num(d_total) if d_total is not None and abs(d_total) > 0 else None,
+    delta_html = ""
+    if d_total is not None and abs(d_total) > 0:
+        color = "green" if d_total >= 0 else "red"
+        sign  = "+" if d_total >= 0 else ""
+        delta_html = (f'<span style="font-size:0.85rem;color:{color};margin-left:10px">'
+                      f'{sign}{ind_num(d_total, decimals=0)}</span>')
+    st.markdown(
+        f'<p style="margin-top:14px">'
+        f'<span style="font-size:0.8rem;color:gray;font-weight:500">Grand Total &nbsp;</span>'
+        f'<span style="font-size:1.25rem;font-weight:700">{ind_num(total)}</span>'
+        f'{delta_html}</p>',
+        unsafe_allow_html=True,
     )
 
+
+# ── History table ─────────────────────────────────────────────────────────────
 
 def _render_table(owners: list, tab_key: str):
     if not _snaps:
@@ -183,7 +210,7 @@ def _render_table(owners: list, tab_key: str):
         d_total = total - _grand_total(prev_s, owners) if prev_s else None
         rows.append({
             "☑":         False,
-            "Recorded":  utc_to_ist(s["recorded_at"]),
+            "Recorded":  _fmt_ts(s["recorded_at"]),
             **{_CAT_LABELS[c]: ind_num(_cat_sum(s, owners, c), decimals=0) for c in _CATS},
             "Total":     ind_num(total),
             "Δ vs prev": (("+" if d_total >= 0 else "") + ind_num(d_total, decimals=0)) if d_total is not None else "—",

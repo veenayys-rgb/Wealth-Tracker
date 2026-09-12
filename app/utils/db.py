@@ -45,6 +45,12 @@ def service_upsert(table: str, rows: list[dict], conflict_col: str = "symbol"):
         _service_client().table(table).upsert(rows, on_conflict=conflict_col).execute()
 
 
+def service_insert(table: str, row: dict) -> dict:
+    """Insert a single row using service key; returns the inserted row."""
+    result = _service_client().table(table).insert(row).execute()
+    return result.data[0] if result.data else {}
+
+
 def service_delete(table: str, col: str, values: list):
     """Delete rows where col is in values, using service key."""
     if values:

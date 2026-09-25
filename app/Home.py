@@ -25,6 +25,7 @@ pg = st.navigation({
         st.Page("pages/11_Insurance.py",           title="Insurance",            icon="🛡"),
         st.Page("pages/12_MF_Recon.py",            title="MF Recon",             icon="🔁"),
         st.Page("pages/13_Equity_Recon.py",        title="Equity Recon",         icon="🔍"),
+        st.Page("pages/15_Corporate_Actions.py",   title="Corporate Actions",    icon="📋"),
     ],
     "MOM": [
         st.Page("pages/14_Mom_Portfolio.py",       title="Mom Portfolio",        icon="👩"),

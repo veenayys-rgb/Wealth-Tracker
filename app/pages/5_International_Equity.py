@@ -176,6 +176,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         "Currency":            curr,
                         "Source":              h.get("source", "") or "—",
                         "Buy Date":            fmt_date(h.get("buy_date", "")),
+                        "Notes":               h.get("notes", "") or "",
                     })
                 total_cv_safe = total_cv if total_cv > 0 else 1.0
                 for r in rows:

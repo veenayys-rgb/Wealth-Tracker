@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.sidebar import render_sidebar, refresh_india_equity_prices, render_index_bar
 import pandas as pd
-from utils.db     import fetch, service_upsert
+from utils.db     import fetch, service_upsert, service_insert
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date, utc_to_ist
 
@@ -19,6 +19,11 @@ prev_prices = {r["symbol"]: float(r["prev_price"]) for r in prices_rows if r.get
 last_fetch  = utc_to_ist(max((r["fetched_at"] for r in prices_rows), default=None)) if prices_rows else "—"
 prev_dates  = [r["prev_price_date"] for r in prices_rows if r.get("prev_price_date")]
 prev_label  = fmt_date(max(prev_dates)) if prev_dates else "—"
+
+try:
+    india_txns = sorted(fetch("equity_india_txns"), key=lambda r: r.get("date", ""), reverse=True)
+except Exception:
+    india_txns = []
 
 render_index_bar()
 
@@ -116,7 +121,7 @@ def _day_view_india(dv_holdings, show_owner: str | None = None):
 for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings  = load(fname)
-        sub_h, sub_d = st.tabs(["📋 Holdings", "📊 Day View"])
+        sub_h, sub_d, sub_t = st.tabs(["📋 Holdings", "📊 Day View", "📝 Transactions"])
 
         # ── Holdings ──────────────────────────────────────────────────────────
         with sub_h:
@@ -194,6 +199,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             "Qty":               float(h.get("qty", 0)),
                             "Avg Cost (₹)":      float(h.get("avg_cost", 0)),
                             "Current Price (₹)": prices.get(sym, 0.0),
+                            "Notes":             h.get("notes", ""),
                         })
                     edited = st.data_editor(
                         pd.DataFrame(qe_rows),
@@ -206,6 +212,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             "Qty":               st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                             "Avg Cost (₹)":      st.column_config.NumberColumn(format="%.2f", min_value=0.0),
                             "Current Price (₹)": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                            "Notes":             st.column_config.TextColumn(width="medium"),
                         },
                         hide_index=True, use_container_width=True, key=f"qe_equity_{owner}",
                     )
@@ -221,6 +228,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                                                        else (str(raw_bd)[:10] if raw_bd else ""))
                             holdings[i]["qty"]      = float(edited.iloc[i]["Qty"])
                             holdings[i]["avg_cost"] = float(edited.iloc[i]["Avg Cost (₹)"])
+                            holdings[i]["notes"]    = str(edited.iloc[i]["Notes"] or "")
                             raw_price = edited.iloc[i]["Current Price (₹)"]
                             new_price = float(raw_price) if raw_price is not None else 0.0
                             if new_price > 0:
@@ -261,6 +269,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     c7, c8 = st.columns(2)
                     qty      = c7.number_input("Quantity",     min_value=0.0, step=1.0,  format="%.4f")
                     avg_cost = c8.number_input("Avg Cost (₹)", min_value=0.0, step=0.01, format="%.2f")
+                    notes    = st.text_input("Notes (optional)")
                     if st.form_submit_button("Add Holding"):
                         if not symbol.strip():
                             st.error("Symbol is required.")
@@ -269,7 +278,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                                 "isin": isin.strip().upper(), "company_name": co_name.strip(),
                                 "symbol": symbol.strip().upper(), "holding_type": h_type,
                                 "source": source, "buy_date": str(buy_date),
-                                "qty": qty, "avg_cost": avg_cost,
+                                "qty": qty, "avg_cost": avg_cost, "notes": notes.strip(),
                             })
                             save(fname, holdings)
                             st.success(f"✅ {symbol.upper()} added.")
@@ -303,12 +312,13 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                                                    min_value=0.0, step=1.0,  format="%.4f")
                         avg_cost = c8.number_input("Avg Cost (₹)", value=float(h.get("avg_cost",0)),
                                                    min_value=0.0, step=0.01, format="%.2f")
+                        notes    = st.text_input("Notes (optional)", value=h.get("notes",""))
                         if st.form_submit_button("Save Changes"):
                             holdings[idx] = {
                                 "isin": isin.strip().upper(), "company_name": co_name.strip(),
                                 "symbol": symbol.strip().upper(), "holding_type": h_type,
                                 "source": source, "buy_date": str(buy_date),
-                                "qty": qty, "avg_cost": avg_cost,
+                                "qty": qty, "avg_cost": avg_cost, "notes": notes.strip(),
                             }
                             save(fname, holdings)
                             st.success("✅ Changes saved.")
@@ -317,6 +327,88 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
         # ── Day View ──────────────────────────────────────────────────────────
         with sub_d:
             _day_view_india(holdings)
+
+        # ── Transactions ──────────────────────────────────────────────────────
+        with sub_t:
+            owner_txns = [t for t in india_txns if t.get("owner") == owner]
+            if owner_txns:
+                txn_rows = [{
+                    "Date":      fmt_date(t.get("date", "")),
+                    "Type":      t.get("type", ""),
+                    "Symbol":    t.get("symbol", ""),
+                    "Qty":       float(t.get("qty", 0)),
+                    "Price (₹)": float(t.get("price", 0)),
+                    "Notes":     t.get("notes", ""),
+                } for t in owner_txns]
+                st.dataframe(
+                    pd.DataFrame(txn_rows),
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "Qty":       st.column_config.NumberColumn(format="%.4f"),
+                        "Price (₹)": st.column_config.NumberColumn(format="₹%.2f"),
+                    },
+                )
+            else:
+                st.info("No transactions recorded yet.")
+            st.divider()
+            with st.expander("➕ Add Transaction"):
+                with st.form(f"add_txn_{owner}"):
+                    c1, c2, c3 = st.columns(3)
+                    txn_date  = c1.date_input("Date", value=datetime.date.today(), format="DD/MM/YYYY")
+                    txn_sym   = c2.text_input("Symbol (NSE)")
+                    txn_type  = c3.selectbox("Type", ["BUY", "SELL", "BONUS", "SPLIT"])
+                    c4, c5    = st.columns(2)
+                    txn_qty   = c4.number_input("Qty", min_value=0.0, step=1.0, format="%.4f")
+                    txn_price = c5.number_input("Price (₹) — 0 for Bonus/Split", min_value=0.0, step=0.01, format="%.2f")
+                    txn_notes = st.text_input("Notes (optional)")
+                    if st.form_submit_button("Record Transaction"):
+                        sym = txn_sym.strip().upper()
+                        err = None
+                        if not sym:
+                            err = "Symbol is required."
+                        elif txn_qty <= 0:
+                            err = "Qty must be > 0."
+                        else:
+                            _ex = next((h for h in holdings if h.get("symbol","").upper() == sym), None)
+                            if txn_type in ("SELL", "BONUS", "SPLIT") and _ex is None:
+                                err = f"{sym} not found in holdings. {txn_type} requires an existing holding."
+                        if err:
+                            st.error(err)
+                        else:
+                            _ex = next((h for h in holdings if h.get("symbol","").upper() == sym), None)
+                            service_insert("equity_india_txns", {
+                                "owner": owner, "symbol": sym,
+                                "date": str(txn_date), "type": txn_type,
+                                "qty": float(txn_qty), "price": float(txn_price),
+                                "notes": txn_notes,
+                            })
+                            if txn_type == "BUY":
+                                if _ex:
+                                    oq = float(_ex["qty"]); oc = float(_ex["avg_cost"])
+                                    nq = oq + txn_qty
+                                    _ex["qty"]      = round(nq, 4)
+                                    _ex["avg_cost"] = round((oq * oc + txn_qty * txn_price) / nq, 4) if nq > 0 else 0
+                                else:
+                                    holdings.append({
+                                        "isin": "", "company_name": "", "symbol": sym,
+                                        "holding_type": "NRE", "source": "Market",
+                                        "buy_date": str(txn_date), "qty": round(txn_qty, 4),
+                                        "avg_cost": round(txn_price, 4), "notes": txn_notes,
+                                    })
+                            elif txn_type in ("BONUS", "SPLIT"):
+                                oq = float(_ex["qty"]); oc = float(_ex["avg_cost"])
+                                nq = oq + txn_qty
+                                _ex["qty"]      = round(nq, 4)
+                                _ex["avg_cost"] = round((oq * oc) / nq, 4) if nq > 0 else 0
+                            elif txn_type == "SELL":
+                                nq = float(_ex["qty"]) - txn_qty
+                                if nq <= 0:
+                                    holdings.remove(_ex)
+                                else:
+                                    _ex["qty"] = round(nq, 4)
+                            save(fname, holdings)
+                            st.success(f"✅ {txn_type} {sym} ×{txn_qty:.4f} recorded and holdings updated.")
+                            st.rerun()
 
 
 # ── All ───────────────────────────────────────────────────────────────────────

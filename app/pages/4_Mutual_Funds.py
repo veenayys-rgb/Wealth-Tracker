@@ -6,7 +6,7 @@ import streamlit as st
 from utils.sidebar import render_sidebar, apply_prev_nav
 import pandas as pd
 import datetime, urllib.request, ssl
-from utils.db     import fetch, service_upsert
+from utils.db     import fetch, service_upsert, service_insert
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date
 
@@ -79,7 +79,11 @@ OWNERS = [
 ]
 
 navs      = {r["isin"]: r for r in fetch("mf_navs")}
-prev_navs = {r["isin"]: float(r["prev_nav"]) for r in navs.values() if r.get("prev_nav")}
+prev_navs        = {r["isin"]: float(r["prev_nav"]) for r in navs.values() if r.get("prev_nav")}
+try:
+    mf_redeemed_rows = fetch("mf_redeemed")
+except Exception:
+    mf_redeemed_rows = []
 
 # Pick the most recent nav_date across all funds
 _dated   = [(parse_date(r["nav_date"]), r["nav_date"]) for r in navs.values() if r.get("nav_date")]
@@ -183,7 +187,7 @@ def _day_view_mf(dv_holdings, show_owner: str | None = None):
 for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings = load(fname)
-        sub_h, sub_d = st.tabs(["📋 Holdings", "📊 Day View"])
+        sub_h, sub_d, sub_r = st.tabs(["📋 Holdings", "📊 Day View", "💰 Redeemed"])
 
         # ── Holdings ──────────────────────────────────────────────────────────
         with sub_h:
@@ -262,6 +266,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             "Units Held":       float(h.get("units", 0)),
                             "Avg NAV (₹)":      float(h.get("avg_nav", 0)),
                             "Current NAV (₹)":  nav_val,
+                            "Notes":            h.get("notes", ""),
                         })
                     edited = st.data_editor(
                         pd.DataFrame(qe_rows),
@@ -272,6 +277,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             "Units Held":       st.column_config.NumberColumn(format="%.3f", min_value=0.0),
                             "Avg NAV (₹)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                             "Current NAV (₹)":  st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                            "Notes":            st.column_config.TextColumn(width="medium"),
                         },
                         hide_index=True, use_container_width=True, key=f"qe_{owner}",
                     )
@@ -281,6 +287,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         for i in range(len(holdings)):
                             holdings[i]["units"]   = float(edited.iloc[i]["Units Held"])
                             holdings[i]["avg_nav"] = float(edited.iloc[i]["Avg NAV (₹)"])
+                            holdings[i]["notes"]   = str(edited.iloc[i]["Notes"] or "")
                             new_nav = float(edited.iloc[i]["Current NAV (₹)"] or 0)
                             if new_nav > 0:
                                 nav_rows.append({"isin": holdings[i]["isin"],
@@ -317,6 +324,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     c3, c4 = st.columns(2)
                     units   = c3.number_input("Units Held",  min_value=0.0, step=0.001, format="%.3f", key=f"units_{owner}")
                     avg_nav = c4.number_input("Avg NAV (₹)", min_value=0.0, step=0.01,  format="%.4f", key=f"anav_{owner}")
+                    notes   = st.text_input("Notes (optional)", key=f"notes_mf_{owner}")
                     if st.form_submit_button("Add Fund"):
                         if not isin_in.strip():
                             st.error("ISIN is required.")
@@ -327,6 +335,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                                 "fund_name": fund_name.strip(),
                                 "units":     units,
                                 "avg_nav":   avg_nav,
+                                "notes":     notes.strip(),
                             })
                             save(fname, holdings)
                             st.success(f"✅ Fund added for {owner}.")
@@ -344,19 +353,110 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         folio     = c1.text_input("Folio No",  value=h.get("folio_no",""),  key=f"efolio_{owner}")
                         isin_in   = c2.text_input("ISIN No",   value=h.get("isin",""),      key=f"eisin_{owner}")
                         fund_name = st.text_input("Fund Name", value=h.get("fund_name",""), key=f"efn_{owner}")
+                        notes_ed  = st.text_input("Notes (optional)", value=h.get("notes",""), key=f"enotes_mf_{owner}")
                         if st.form_submit_button("Save Details"):
                             holdings[idx].update({
                                 "folio_no":  folio.strip(),
                                 "isin":      isin_in.strip().upper(),
                                 "fund_name": fund_name.strip(),
+                                "notes":     notes_ed.strip(),
                             })
                             save(fname, holdings)
                             st.success("✅ Details saved.")
                             st.rerun()
 
+            # ── Redeem ─────────────────────────────────────────────────────
+            if holdings:
+                with st.expander(f"🔴 Redeem a Fund — {owner}"):
+                    opts_red = [
+                        f"{h.get('isin','—')} — {navs.get(h.get('isin','').upper(),{}).get('amfi_name') or h.get('fund_name','')}"
+                        for h in holdings
+                    ]
+                    sel_red  = st.selectbox("Select fund to redeem", opts_red, key=f"redeem_sel_{owner}")
+                    idx_red  = opts_red.index(sel_red)
+                    h_red    = holdings[idx_red]
+                    with st.form(f"redeem_mf_{owner}"):
+                        c1, c2    = st.columns(2)
+                        exit_nav  = c1.number_input("Exit NAV (₹)", min_value=0.0, step=0.01, format="%.4f")
+                        exit_date = c2.date_input("Exit Date", value=datetime.date.today(), format="DD/MM/YYYY")
+                        notes_red = st.text_input("Notes (optional)")
+                        st.caption(f"Will redeem {float(h_red.get('units',0)):,.3f} units of {h_red.get('isin','')}")
+                        if st.form_submit_button("🔴 Confirm Redeem"):
+                            if exit_nav <= 0:
+                                st.error("Exit NAV must be > 0.")
+                            else:
+                                isin_r  = h_red.get("isin","").upper()
+                                fund_nm = navs.get(isin_r, {}).get("amfi_name") or h_red.get("fund_name","")
+                                service_insert("mf_redeemed", {
+                                    "owner":     owner,
+                                    "isin":      isin_r,
+                                    "fund_name": fund_nm,
+                                    "units":     float(h_red.get("units", 0)),
+                                    "avg_nav":   float(h_red.get("avg_nav", 0)),
+                                    "exit_nav":  exit_nav,
+                                    "exit_date": str(exit_date),
+                                    "notes":     notes_red,
+                                })
+                                holdings.pop(idx_red)
+                                save(fname, holdings)
+                                st.success(f"✅ {isin_r} redeemed and moved to history.")
+                                st.rerun()
+
         # ── Day View ──────────────────────────────────────────────────────────
         with sub_d:
             _day_view_mf(holdings)
+
+        # ── Redeemed ──────────────────────────────────────────────────────────
+        with sub_r:
+            owner_red = [r for r in mf_redeemed_rows if r.get("owner") == owner]
+            if owner_red:
+                red_rows = []
+                for r in owner_red:
+                    units_r    = float(r.get("units", 0))
+                    avg_nav_r  = float(r.get("avg_nav", 0))
+                    exit_nav_r = float(r.get("exit_nav", 0))
+                    invested_r = units_r * avg_nav_r
+                    proceeds_r = units_r * exit_nav_r
+                    gl_r       = proceeds_r - invested_r
+                    ret_r      = (gl_r / invested_r * 100) if invested_r > 0 else 0.0
+                    red_rows.append({
+                        "Fund Name":     r.get("fund_name") or r.get("isin","—"),
+                        "ISIN":          r.get("isin",""),
+                        "Units":         units_r,
+                        "Avg NAV (₹)":   avg_nav_r,
+                        "Exit NAV (₹)":  exit_nav_r,
+                        "Exit Date":     fmt_date(r.get("exit_date","")),
+                        "Invested (₹)":  invested_r,
+                        "Proceeds (₹)":  proceeds_r,
+                        "Gain/Loss (₹)": gl_r,
+                        "Return %":      ret_r,
+                        "Notes":         r.get("notes",""),
+                    })
+                df_red = pd.DataFrame(red_rows)
+                st.dataframe(
+                    df_red.style.map(lambda v: "color:green" if isinstance(v, float) and v >= 0 else
+                                               "color:red"   if isinstance(v, float) and v <  0 else "",
+                                     subset=["Gain/Loss (₹)", "Return %"]),
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "Units":         st.column_config.NumberColumn(format="%.3f"),
+                        "Avg NAV (₹)":   st.column_config.NumberColumn(format="%.4f"),
+                        "Exit NAV (₹)":  st.column_config.NumberColumn(format="%.4f"),
+                        "Invested (₹)":  st.column_config.NumberColumn(format="₹%.0f"),
+                        "Proceeds (₹)":  st.column_config.NumberColumn(format="₹%.0f"),
+                        "Gain/Loss (₹)": st.column_config.NumberColumn(format="₹%.0f"),
+                        "Return %":      st.column_config.NumberColumn(format="%.2f%%"),
+                    },
+                )
+                tot_inv_r  = sum(r["Invested (₹)"]  for r in red_rows)
+                tot_proc_r = sum(r["Proceeds (₹)"]  for r in red_rows)
+                tot_gl_r   = tot_proc_r - tot_inv_r
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Invested",  ind_num(tot_inv_r))
+                c2.metric("Total Proceeds",  ind_num(tot_proc_r))
+                c3.metric("Total Gain/Loss", ind_num(tot_gl_r))
+            else:
+                st.info(f"No redemptions recorded for {owner} yet.")
 
 
 # ── All ───────────────────────────────────────────────────────────────────────

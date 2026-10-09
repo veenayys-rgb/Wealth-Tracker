@@ -76,14 +76,14 @@ if confirm:
     for r in confirm:
         _bill(r)
 
-# ── Due by month ─────────────────────────────────────────────────────────────
-st.subheader("Due by month")
+# ── Due by statement month (each card's bill under the month of its statement) ─
+st.subheader("Due by statement month")
 by_month = {}
 for r in rows:
-    if r["due"] and r.get("total_due") is not None:
-        by_month.setdefault((r["due"].year, r["due"].month), []).append(r)
+    stmt = parse_date(r.get("statement_date"))
+    if stmt and r.get("total_due") is not None:
+        by_month.setdefault((stmt.year, stmt.month), []).append(r)
 
-this_month = (today.year, today.month)
 for key in sorted(by_month, reverse=True)[:12]:
     bills = sorted(by_month[key], key=lambda r: r["bank"])
     st.markdown(f"<div style='display:flex;justify-content:space-between;border-bottom:1px solid "
@@ -91,8 +91,7 @@ for key in sorted(by_month, reverse=True)[:12]:
                 f"<span>{datetime.date(key[0], key[1], 1):%b %Y}</span>"
                 f"<span style='font-weight:600'>{plain_num(sum(float(b['total_due']) for b in bills))}</span></div>",
                 unsafe_allow_html=True)
-    if key >= this_month:
-        st.caption(" · ".join(f"{b['bank']} {plain_num(b['total_due'], decimals=0)}" for b in bills))
+    st.caption(" · ".join(f"{b['bank']} {plain_num(b['total_due'], decimals=0)}" for b in bills))
 
 st.divider()
 st.caption(f"Updated from your Mac · {utc_to_ist(max((r['updated_at'] for r in rows), default=None))}")

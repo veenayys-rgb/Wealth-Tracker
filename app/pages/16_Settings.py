@@ -23,6 +23,22 @@ _RELS = [
     "Son-in-law", "Daughter-in-law", "Grandson", "Granddaughter",
     "Nephew", "Niece", "Uncle", "Aunt", "Other",
 ]
+
+# Common nominees — shown as dropdown; user can also type any name not in list
+_NOMINEE_OPTS = ["", "Harsh Sharma", "Anusha Sharma", "Vinay Sharma", "Roopesh Sharma"]
+
+# Auto-fill relationship when nominee is selected (owner → nominee → relationship)
+_REL_LOOKUP: dict[tuple[str, str], str] = {
+    ("Vinay",  "Harsh Sharma"):   "Spouse",
+    ("Vinay",  "Anusha Sharma"):  "Daughter",
+    ("Harsh",  "Vinay Sharma"):   "Spouse",
+    ("Harsh",  "Anusha Sharma"):  "Daughter",
+    ("Anusha", "Vinay Sharma"):   "Father",
+    ("Anusha", "Harsh Sharma"):   "Mother",
+    ("Mom",    "Vinay Sharma"):   "Son",
+    ("Mom",    "Roopesh Sharma"): "Son",
+}
+
 _ALL_OWNERS    = ["Vinay", "Harsh", "Anusha", "Mom"]
 _FAMILY_OWNERS = ["Vinay", "Harsh", "Anusha"]
 
@@ -74,8 +90,8 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
     edited = st.data_editor(
         pd.DataFrame(data),
         column_config={
-            "Nominee":      st.column_config.TextColumn("Nominee",      width="medium",
-                                help="Type a family member (Vinay / Harsh / Anusha) or any other name"),
+            "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="medium",
+                                help="Select a name or type to search; any name can be entered"),
             "%":            st.column_config.NumberColumn("%",                min_value=0, max_value=100, step=1, width="small"),
             "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="medium"),
             "Registered?":  st.column_config.CheckboxColumn("Registered?",   width="small"),
@@ -98,13 +114,19 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
         st.caption("⚠️ No nominee set")
 
     if st.button("💾 Save", key=f"sv_{editor_key}", type="primary"):
-        rows_to_save = [
-            {"Nominee": row["Nominee"], "%": row["%"],
-             "Relationship": row["Relationship"],
-             "Registered?": row["Registered?"], "Notes": row["Notes"]}
-            for _, row in edited.iterrows()
-            if row.get("Nominee") and str(row["Nominee"]).strip()
-        ]
+        rows_to_save = []
+        for _, row in edited.iterrows():
+            name = str(row.get("Nominee") or "").strip()
+            if not name:
+                continue
+            rel = str(row.get("Relationship") or "").strip()
+            if not rel:
+                rel = _REL_LOOKUP.get((owner, name), "")
+            rows_to_save.append({
+                "Nominee": name, "%": row["%"],
+                "Relationship": rel,
+                "Registered?": row["Registered?"], "Notes": row["Notes"],
+            })
         _save_asset(asset_type, asset_ref, owner, label, rows_to_save)
         st.success("✅ Saved.")
         st.rerun()

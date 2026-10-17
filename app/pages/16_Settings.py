@@ -3,7 +3,6 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-import pandas as pd
 
 from utils.sidebar import render_sidebar
 from utils.db      import fetch, service_insert, service_delete_match
@@ -71,12 +70,9 @@ def _save_asset(asset_type: str, asset_ref: str, owner: str, label: str, rows: l
     st.cache_data.clear()
 
 
-def _validate_and_save(rows_to_save, asset_type, asset_ref, owner, label, editor_key, fkey=None):
-    _save_asset(asset_type, asset_ref, owner, label, rows_to_save)
-    if fkey:
-        st.session_state.pop(fkey, None)
-    st.success("✅ Saved.")
-    st.rerun()
+# column proportions: Nominee | % | Relationship | Reg | Notes | del
+_TBL = [3.5, 1.3, 2.5, 1.0, 3.0, 0.5]
+_HDR = ["Nominee", "%", "Relationship", "Reg", "Notes", ""]
 
 
 # ── Per-asset editor ──────────────────────────────────────────────────────────
@@ -94,135 +90,79 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
         {"Nominee": "", "%": 100, "Relationship": "", "Registered": False, "Notes": ""}
     ]
 
-    tcol, _ = st.columns([1, 5])
-    use_form = tcol.toggle("Form view", key=f"fv_{editor_key}")
+    fkey = f"fd_{editor_key}"
+    if fkey not in st.session_state:
+        st.session_state[fkey] = [dict(r) for r in base_data]
 
-    # ── Table view ────────────────────────────────────────────────────────────
-    if not use_form:
-        edited = st.data_editor(
-            pd.DataFrame(base_data),
-            column_config={
-                "Nominee":      st.column_config.SelectboxColumn("Nominee",       options=_NOMINEE_OPTS, width="medium"),
-                "%":            st.column_config.NumberColumn("%",                min_value=0, max_value=100, step=1, width="small"),
-                "Relationship": st.column_config.SelectboxColumn("Relationship",  options=_RELS, width="medium"),
-                "Registered":   st.column_config.CheckboxColumn("Registered",     width="medium"),
-                "Notes":        st.column_config.TextColumn("Notes",              width="large"),
-            },
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True,
-            key=editor_key,
-        )
+    rows = st.session_state[fkey]
+    to_delete = []
 
-        needs_rerun = False
-        for i, row in edited.iterrows():
-            name = str(row.get("Nominee") or "").strip()
-            rel  = str(row.get("Relationship") or "").strip()
-            if name and not rel:
-                auto_rel = _REL_LOOKUP.get((owner, name), "")
-                if auto_rel:
-                    es = st.session_state.get(editor_key, {})
-                    er = es.get("edited_rows", {})
-                    rd = er.get(i, {})
-                    rd["Relationship"] = auto_rel
-                    er[i] = rd
-                    es["edited_rows"] = er
-                    st.session_state[editor_key] = es
-                    needs_rerun = True
-        if needs_rerun:
-            st.rerun()
+    # Header row
+    h = st.columns(_TBL)
+    for col, lbl in zip(h, _HDR):
+        col.markdown(f"<small><b>{lbl}</b></small>", unsafe_allow_html=True)
 
-        filled = edited[edited["Nominee"].notna() & (edited["Nominee"].astype(str).str.strip() != "")]
-        if len(filled) > 0:
-            total = filled["%"].sum()
-            if total != 100:
-                st.warning(f"⚠️ % sums to {int(total)}% — must total 100%")
-            else:
-                st.caption("✅ 100%")
+    # Data rows
+    for i, row in enumerate(rows):
+        c = st.columns(_TBL)
+        nom_idx         = _NOMINEE_OPTS.index(row["Nominee"]) if row["Nominee"] in _NOMINEE_OPTS else 0
+        row["Nominee"]  = c[0].selectbox("n", _NOMINEE_OPTS, index=nom_idx,
+                                         key=f"{editor_key}_fn_{i}", label_visibility="collapsed")
+        row["%"]        = c[1].number_input("p", 0, 100, value=int(row["%"]),
+                                            key=f"{editor_key}_fp_{i}", label_visibility="collapsed")
+        rel_idx           = _RELS.index(row["Relationship"]) if row["Relationship"] in _RELS else 0
+        row["Relationship"] = c[2].selectbox("r", _RELS, index=rel_idx,
+                                              key=f"{editor_key}_fr_{i}", label_visibility="collapsed")
+        row["Registered"] = c[3].checkbox("", value=bool(row["Registered"]),
+                                          key=f"{editor_key}_fc_{i}")
+        row["Notes"]      = c[4].text_input("nt", value=str(row["Notes"] or ""),
+                                             key=f"{editor_key}_fnotes_{i}", label_visibility="collapsed")
+        if c[5].button("🗑", key=f"{editor_key}_fdel_{i}", help="Remove"):
+            to_delete.append(i)
+
+    # Auto-fill Relationship when Nominee selected but Relationship blank
+    needs_rerun = False
+    for i, row in enumerate(rows):
+        if str(row.get("Nominee") or "").strip() and not str(row.get("Relationship") or "").strip():
+            auto_rel = _REL_LOOKUP.get((owner, row["Nominee"]), "")
+            if auto_rel:
+                st.session_state[fkey][i]["Relationship"] = auto_rel
+                needs_rerun = True
+
+    if to_delete:
+        st.session_state[fkey] = [r for j, r in enumerate(rows) if j not in to_delete]
+        needs_rerun = True
+
+    if needs_rerun:
+        st.rerun()
+
+    if st.button("➕ Add nominee", key=f"{editor_key}_fadd"):
+        st.session_state[fkey].append({"Nominee": "", "%": 0, "Relationship": "", "Registered": False, "Notes": ""})
+        st.rerun()
+
+    filled = [r for r in rows if str(r.get("Nominee") or "").strip()]
+    if filled:
+        total = sum(r.get("%", 0) for r in filled)
+        if total != 100:
+            st.warning(f"⚠️ % sums to {int(total)}% — must total 100%")
         else:
-            st.caption("⚠️ No nominee set")
-
-        if st.button("💾 Save", key=f"sv_{editor_key}", type="primary"):
-            rows_to_save = []
-            for _, row in edited.iterrows():
-                name = str(row.get("Nominee") or "").strip()
-                if not name:
-                    continue
-                rel = str(row.get("Relationship") or "").strip() or _REL_LOOKUP.get((owner, name), "")
-                rows_to_save.append({"Nominee": name, "%": row["%"], "Relationship": rel,
-                                     "Registered": row["Registered"], "Notes": row["Notes"]})
-            _validate_and_save(rows_to_save, asset_type, asset_ref, owner, label, editor_key)
-
-    # ── Form view ─────────────────────────────────────────────────────────────
+            st.caption("✅ 100%")
     else:
-        fkey = f"fd_{editor_key}"
-        if fkey not in st.session_state:
-            st.session_state[fkey] = [dict(r) for r in base_data]
+        st.caption("⚠️ No nominee set")
 
-        rows = st.session_state[fkey]
-        to_delete = []
-
-        for i, row in enumerate(rows):
-            r1 = st.columns([4, 1.5, 1.5, 0.6])
-            nom_idx = _NOMINEE_OPTS.index(row["Nominee"]) if row["Nominee"] in _NOMINEE_OPTS else 0
-            row["Nominee"]    = r1[0].selectbox("Nominee", _NOMINEE_OPTS, index=nom_idx,
-                                                key=f"{editor_key}_fn_{i}")
-            row["%"]          = r1[1].number_input("Share %", 0, 100, value=int(row["%"]),
-                                                   key=f"{editor_key}_fp_{i}")
-            row["Registered"] = r1[2].checkbox("Reg. done?", value=bool(row["Registered"]),
-                                               key=f"{editor_key}_fc_{i}")
-            if r1[3].button("🗑", key=f"{editor_key}_fdel_{i}", help="Remove"):
-                to_delete.append(i)
-
-            r2 = st.columns([3, 5])
-            rel_idx = _RELS.index(row["Relationship"]) if row["Relationship"] in _RELS else 0
-            row["Relationship"] = r2[0].selectbox("Relationship", _RELS, index=rel_idx,
-                                                   key=f"{editor_key}_fr_{i}")
-            row["Notes"]        = r2[1].text_input("Notes", value=str(row["Notes"] or ""),
-                                                    key=f"{editor_key}_fnotes_{i}")
-            if i < len(rows) - 1:
-                st.divider()
-
-        # Auto-fill relationship in form view
-        needs_rerun = False
-        for i, row in enumerate(rows):
-            if str(row.get("Nominee") or "").strip() and not str(row.get("Relationship") or "").strip():
-                auto_rel = _REL_LOOKUP.get((owner, row["Nominee"]), "")
-                if auto_rel:
-                    st.session_state[fkey][i]["Relationship"] = auto_rel
-                    needs_rerun = True
-
-        if to_delete:
-            st.session_state[fkey] = [r for j, r in enumerate(rows) if j not in to_delete]
-            needs_rerun = True
-
-        if needs_rerun:
-            st.rerun()
-
-        if st.button("➕ Add nominee", key=f"{editor_key}_fadd"):
-            st.session_state[fkey].append({"Nominee": "", "%": 0, "Relationship": "", "Registered": False, "Notes": ""})
-            st.rerun()
-
-        filled = [r for r in rows if str(r.get("Nominee") or "").strip()]
-        if filled:
-            total = sum(r.get("%", 0) for r in filled)
-            if total != 100:
-                st.warning(f"⚠️ % sums to {int(total)}% — must total 100%")
-            else:
-                st.caption("✅ 100%")
-        else:
-            st.caption("⚠️ No nominee set")
-
-        if st.button("💾 Save", key=f"sv_{editor_key}", type="primary"):
-            rows_to_save = []
-            for row in rows:
-                name = str(row.get("Nominee") or "").strip()
-                if not name:
-                    continue
-                rel = str(row.get("Relationship") or "").strip() or _REL_LOOKUP.get((owner, name), "")
-                rows_to_save.append({"Nominee": name, "%": row["%"], "Relationship": rel,
-                                     "Registered": row["Registered"], "Notes": row["Notes"]})
-            _validate_and_save(rows_to_save, asset_type, asset_ref, owner, label, editor_key, fkey)
+    if st.button("💾 Save", key=f"sv_{editor_key}", type="primary"):
+        rows_to_save = []
+        for row in rows:
+            name = str(row.get("Nominee") or "").strip()
+            if not name:
+                continue
+            rel = str(row.get("Relationship") or "").strip() or _REL_LOOKUP.get((owner, name), "")
+            rows_to_save.append({"Nominee": name, "%": row["%"], "Relationship": rel,
+                                 "Registered": row["Registered"], "Notes": row["Notes"]})
+        _save_asset(asset_type, asset_ref, owner, label, rows_to_save)
+        st.session_state.pop(fkey, None)
+        st.success("✅ Saved.")
+        st.rerun()
 
 
 # ── Per-owner page ────────────────────────────────────────────────────────────

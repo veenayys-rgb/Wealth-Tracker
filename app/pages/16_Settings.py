@@ -103,6 +103,25 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
         key=editor_key,
     )
 
+    # Auto-fill Relationship in the editor when a Nominee is chosen but Relationship is blank
+    needs_rerun = False
+    for i, row in edited.iterrows():
+        name = str(row.get("Nominee") or "").strip()
+        rel  = str(row.get("Relationship") or "").strip()
+        if name and not rel:
+            auto_rel = _REL_LOOKUP.get((owner, name), "")
+            if auto_rel:
+                es = st.session_state.get(editor_key, {})
+                edited_rows = es.get("edited_rows", {})
+                row_data = edited_rows.get(i, {})
+                row_data["Relationship"] = auto_rel
+                edited_rows[i] = row_data
+                es["edited_rows"] = edited_rows
+                st.session_state[editor_key] = es
+                needs_rerun = True
+    if needs_rerun:
+        st.rerun()
+
     filled = edited[edited["Nominee"].notna() & (edited["Nominee"].astype(str).str.strip() != "")]
     if len(filled) > 0:
         total = filled["%"].sum()

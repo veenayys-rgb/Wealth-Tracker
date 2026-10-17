@@ -118,7 +118,7 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
                                           key=f"{editor_key}_fc_{i}")
         row["Notes"]      = c[4].text_input("nt", value=str(row["Notes"] or ""),
                                              key=f"{editor_key}_fnotes_{i}", label_visibility="collapsed")
-        if c[5].button("🗑", key=f"{editor_key}_fdel_{i}", help="Remove"):
+        if c[5].button("✕", key=f"{editor_key}_fdel_{i}", help="Remove"):
             to_delete.append(i)
 
     needs_rerun = False

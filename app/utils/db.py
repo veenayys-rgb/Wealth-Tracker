@@ -55,3 +55,11 @@ def service_delete(table: str, col: str, values: list):
     """Delete rows where col is in values, using service key."""
     if values:
         _service_client().table(table).delete().in_(col, values).execute()
+
+
+def service_delete_match(table: str, match: dict):
+    """Delete rows matching ALL key=value pairs, using service key."""
+    q = _service_client().table(table).delete()
+    for col, val in match.items():
+        q = q.eq(col, val)
+    q.execute()

@@ -97,10 +97,11 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
     rows = st.session_state[fkey]
     to_delete = []
 
-    # Header row
+    # Header row + divider
     h = st.columns(_TBL)
     for col, lbl in zip(h, _HDR):
         col.markdown(f"<small><b>{lbl}</b></small>", unsafe_allow_html=True)
+    st.markdown('<hr style="margin:2px 0 4px 0;border:none;border-top:1.5px solid #aaa;">', unsafe_allow_html=True)
 
     # Data rows
     for i, row in enumerate(rows):
@@ -120,8 +121,9 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
         if c[5].button("🗑", key=f"{editor_key}_fdel_{i}", help="Remove"):
             to_delete.append(i)
 
-    # Auto-fill Relationship when Nominee selected but Relationship blank
     needs_rerun = False
+
+    # Auto-fill Relationship when Nominee selected but Relationship blank
     for i, row in enumerate(rows):
         if str(row.get("Nominee") or "").strip() and not str(row.get("Relationship") or "").strip():
             auto_rel = _REL_LOOKUP.get((owner, row["Nominee"]), "")
@@ -133,22 +135,34 @@ def _asset_editor(asset_type: str, asset_ref: str, owner: str, label: str, edito
         st.session_state[fkey] = [r for j, r in enumerate(rows) if j not in to_delete]
         needs_rerun = True
 
+    # Auto-add a new row when the last filled row leaves % < 100
+    if not to_delete:
+        filled_rows = [r for r in rows if str(r.get("Nominee") or "").strip()]
+        total_pct   = sum(r.get("%", 0) for r in filled_rows)
+        last_filled = bool(rows and str(rows[-1].get("Nominee") or "").strip())
+        if filled_rows and total_pct < 100 and last_filled:
+            remaining = max(1, 100 - total_pct)
+            st.session_state[fkey].append({
+                "Nominee": "", "%": remaining, "Relationship": "", "Registered": False, "Notes": ""
+            })
+            needs_rerun = True
+
     if needs_rerun:
         st.rerun()
 
-    if st.button("➕ Add nominee", key=f"{editor_key}_fadd"):
+    filled = [r for r in rows if str(r.get("Nominee") or "").strip()]
+    total = sum(r.get("%", 0) for r in filled) if filled else 0
+    if not filled:
+        st.caption("⚠️ No nominee set")
+    elif total != 100:
+        st.warning(f"⚠️ % sums to {int(total)}% — must total 100%")
+    else:
+        st.caption("✅ 100%")
+
+    # Manual add still available (e.g. to add a blank row when total = 100 and user wants to adjust split)
+    if st.button("➕ Add row", key=f"{editor_key}_fadd"):
         st.session_state[fkey].append({"Nominee": "", "%": 0, "Relationship": "", "Registered": False, "Notes": ""})
         st.rerun()
-
-    filled = [r for r in rows if str(r.get("Nominee") or "").strip()]
-    if filled:
-        total = sum(r.get("%", 0) for r in filled)
-        if total != 100:
-            st.warning(f"⚠️ % sums to {int(total)}% — must total 100%")
-        else:
-            st.caption("✅ 100%")
-    else:
-        st.caption("⚠️ No nominee set")
 
     if st.button("💾 Save", key=f"sv_{editor_key}", type="primary"):
         rows_to_save = []

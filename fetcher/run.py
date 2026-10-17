@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from forex        import fetch_forex
 from mutual_funds import fetch_amfi_navs
 from equity       import fetch_india, fetch_international, fetch_watchlist
-from history      import record_history
+from history           import record_history
+from dashboard_history import record_dashboard_snapshot
 
 def hr():    print("─" * 62)
 def stamp(): return datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
@@ -31,6 +32,7 @@ if __name__ == "__main__":
     fetch_international()                            # ADX + US equity prices
     fetch_watchlist()                                # Watchlist 52W data
     record_history()                                 # Daily snapshot (if market closed)
+    record_dashboard_snapshot()                      # Dashboard history snapshot (if market closed)
 
     elapsed = round(time.time() - start, 1)
     hr()

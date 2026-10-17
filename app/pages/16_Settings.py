@@ -139,21 +139,21 @@ def _owner_page(owner: str):
     if folio_map:
         with st.expander(f"📊 Mutual Funds — {len(folio_map)} Folio{'s' if len(folio_map) != 1 else ''}", expanded=True):
             st.caption("Nomination is at folio level.")
-            for folio, schemes in sorted(folio_map.items()):
+            for idx, (folio, schemes) in enumerate(sorted(folio_map.items())):
                 st.markdown(f"**Folio {folio}** — {', '.join(sorted(set(schemes)))}")
-                _asset_editor("mf", f"{owner}_{folio}", owner, f"{owner} — Folio {folio}", f"{owner}_mf_{folio}")
+                _asset_editor("mf", f"{owner}_{folio}", owner, f"{owner} — Folio {folio}", f"{owner}_mf_{idx}")
                 st.divider()
 
     # Bank India
     banks_in = [b for b in fetch("cfg_bank_india") if b.get("owner", "Vinay") == owner]
     if banks_in:
         with st.expander(f"🏦 Bank Accounts India — {len(banks_in)} Account{'s' if len(banks_in) != 1 else ''}", expanded=True):
-            for b in banks_in:
+            for idx, b in enumerate(banks_in):
                 bname = b.get("bank_name", "")
                 acc   = b.get("account_no_last4", "")
                 st.markdown(f"**{bname}** …{acc}")
                 _asset_editor("bank_india", f"{owner}|{bname}|{acc}", owner,
-                              f"{owner} — {bname} …{acc}", f"{owner}_bankin_{bname}_{acc}")
+                              f"{owner} — {bname} …{acc}", f"{owner}_bankin_{idx}")
                 st.divider()
 
     # Bank UAE
@@ -161,24 +161,24 @@ def _owner_page(owner: str):
         banks_uae = [b for b in fetch("cfg_bank_uae") if b.get("owner", "Vinay") == owner]
         if banks_uae:
             with st.expander(f"🏦 Bank Accounts UAE — {len(banks_uae)} Account{'s' if len(banks_uae) != 1 else ''}", expanded=True):
-                for b in banks_uae:
+                for idx, b in enumerate(banks_uae):
                     bname = b.get("bank_name", "")
                     acc   = b.get("account_no", "")
                     st.markdown(f"**{bname}** {acc}")
                     _asset_editor("bank_uae", f"{owner}|{bname}|{acc}", owner,
-                                  f"{owner} — {bname} {acc}", f"{owner}_bankuae_{bname}_{acc}")
+                                  f"{owner} — {bname} {acc}", f"{owner}_bankuae_{idx}")
                     st.divider()
 
     # Fixed Deposits
     fds = [fd for fd in fetch("cfg_fixed_deposits") if fd.get("owner", "Vinay") == owner]
     if fds:
         with st.expander(f"🏛 Fixed Deposits — {len(fds)}", expanded=True):
-            for fd in fds:
+            for idx, fd in enumerate(fds):
                 bank  = fd.get("bank", "")
                 fd_no = fd.get("fd_no", "")
                 st.markdown(f"**{bank}** FD {fd_no}")
                 _asset_editor("fd", f"{owner}|{bank}|{fd_no}", owner,
-                              f"{owner} — {bank} FD {fd_no}", f"{owner}_fd_{bank}_{fd_no}")
+                              f"{owner} — {bank} FD {fd_no}", f"{owner}_fd_{idx}")
                 st.divider()
 
     # Insurance
@@ -186,12 +186,12 @@ def _owner_page(owner: str):
         policies = [p for p in fetch("cfg_insurance") if p.get("owner", "Vinay") == owner]
         if policies:
             with st.expander(f"🛡 Insurance — {len(policies)} Polic{'ies' if len(policies) != 1 else 'y'}", expanded=True):
-                for p in policies:
+                for idx, p in enumerate(policies):
                     company   = p.get("company_name", "")
                     policy_no = p.get("policy_no", "")
                     st.markdown(f"**{company}** {policy_no}")
                     _asset_editor("insurance", f"{owner}|{policy_no}", owner,
-                                  f"{owner} — {company} {policy_no}", f"{owner}_ins_{policy_no}")
+                                  f"{owner} — {company} {policy_no}", f"{owner}_ins_{idx}")
                     st.divider()
 
 

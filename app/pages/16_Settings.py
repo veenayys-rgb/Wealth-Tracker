@@ -107,15 +107,15 @@ def _section_hdr(title: str, color_key: str):
     )
 
 
-def _col_cfg(id_col: str, id_width: str = "medium") -> dict:
+def _col_cfg(id_col: str, id_width: str = "small") -> dict:
     """Column config for single-nominee sections. id_col is the read-only identifier column."""
     return {
         id_col:         st.column_config.TextColumn(id_col, disabled=True, width=id_width),
-        "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="medium"),
+        "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="small"),
         "%":            st.column_config.NumberColumn("%", min_value=0, max_value=100, step=1, width="small"),
-        "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="medium"),
+        "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="small"),
         "Registered":   st.column_config.CheckboxColumn("Reg", width="small"),
-        "Notes":        st.column_config.TextColumn("Notes", width="large"),
+        "Notes":        st.column_config.TextColumn("Notes", width="medium"),
     }
 
 
@@ -169,11 +169,11 @@ def _multi_nominee_editor(asset_type: str, asset_ref: str, owner: str,
     edited = st.data_editor(
         base_data,
         column_config={
-            "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="medium"),
+            "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="small"),
             "%":            st.column_config.NumberColumn("%", min_value=0, max_value=100, step=1, width="small"),
-            "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="medium"),
+            "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="small"),
             "Registered":   st.column_config.CheckboxColumn("Reg", width="small"),
-            "Notes":        st.column_config.TextColumn("Notes", width="large"),
+            "Notes":        st.column_config.TextColumn("Notes", width="medium"),
         },
         num_rows="dynamic",
         key=editor_key,
@@ -286,12 +286,12 @@ def _owner_page(owner: str):
             mf_data,
             column_config={
                 "Folio No": st.column_config.TextColumn("Folio No", disabled=True, width="small"),
-                "Schemes":  st.column_config.TextColumn("Schemes",  disabled=True, width="large"),
-                "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="medium"),
+                "Schemes":  st.column_config.TextColumn("Schemes",  disabled=True, width="medium"),
+                "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="small"),
                 "%":            st.column_config.NumberColumn("%", min_value=0, max_value=100, step=1, width="small"),
-                "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="medium"),
+                "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="small"),
                 "Registered":   st.column_config.CheckboxColumn("Reg", width="small"),
-                "Notes":        st.column_config.TextColumn("Notes", width="large"),
+                "Notes":        st.column_config.TextColumn("Notes", width="medium"),
             },
             num_rows="fixed",
             key=f"{owner}_mf_de",
@@ -387,12 +387,12 @@ def _owner_page(owner: str):
         edited_fd = st.data_editor(
             fd_data,
             column_config={
-                "FD / Bank":    st.column_config.TextColumn("FD / Bank", disabled=True, width="medium"),
-                "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="medium"),
+                "FD / Bank":    st.column_config.TextColumn("FD / Bank", disabled=True, width="small"),
+                "Nominee":      st.column_config.SelectboxColumn("Nominee", options=_NOMINEE_OPTS, width="small"),
                 "%":            st.column_config.NumberColumn("%", min_value=0, max_value=100, step=1, width="small"),
-                "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="medium"),
+                "Relationship": st.column_config.SelectboxColumn("Relationship", options=_RELS, width="small"),
                 "Registered":   st.column_config.CheckboxColumn("Reg", width="small"),
-                "Notes":        st.column_config.TextColumn("Notes", width="large"),
+                "Notes":        st.column_config.TextColumn("Notes", width="medium"),
             },
             num_rows="fixed",
             key=f"{owner}_fd_de",

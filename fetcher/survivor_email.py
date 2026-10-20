@@ -198,9 +198,10 @@ def _assets_insurance(owner, insurance) -> list[dict]:
         iv      = _ind_raw(i.get("insured_value"))
         cur     = i.get("currency", "INR")
         bal_s   = (_ind(iv) if cur == "INR" else f"{cur} {iv:,.0f}") if iv else "—"
-        bal_num = iv if cur == "INR" else iv * (22.5)   # rough AED→INR if needed
+        bal_num = iv if cur == "INR" else iv * (22.5)
+        doc_url = (i.get("doc_url") or "").strip()
         result.append({"label": f"{company}  {policy}".strip(), "bal_str": bal_s,
-                        "bal_num": bal_num, "refs": [ref]})
+                        "bal_num": bal_num, "refs": [ref], "doc_url": doc_url})
     return result
 
 
@@ -229,8 +230,8 @@ def _border_thin() -> Border:
     s = Side(style="thin", color="D1D5DB")
     return Border(left=s, right=s, top=s, bottom=s)
 
-COL_WIDTHS = [40, 24, 22, 7, 32]   # Asset | Balance | Nominee | % | Notes
-COL_HDRS   = ["Asset / Folio No", "Balance / Value", "Nominee", "%", "Notes"]
+COL_WIDTHS = [40, 24, 22, 7, 32, 12]   # Asset | Balance | Nominee | % | Notes | Doc
+COL_HDRS   = ["Asset / Folio No", "Balance / Value", "Nominee", "%", "Notes", "Doc"]
 
 
 def _set_col_widths(ws):
@@ -261,7 +262,7 @@ def _write_owner_sheet(ws, owner, data, nom_idx):
     row = 1
 
     # ── Title ──
-    ws.merge_cells(f"A{row}:E{row}")
+    ws.merge_cells(f"A{row}:F{row}")
     c = ws.cell(row=row, column=1,
                 value=f"{owner}  —  Nominee Digest   |   {today_str}")
     c.font      = Font(bold=True, size=13, color="FFFFFF", name="Arial")
@@ -332,7 +333,7 @@ def _write_owner_sheet(ws, owner, data, nom_idx):
         _, bg, fg = _SECTION_META[at]
 
         # Section header
-        ws.merge_cells(f"A{row}:E{row}")
+        ws.merge_cells(f"A{row}:F{row}")
         c = ws.cell(row=row, column=1, value=f"  {title}")
         c.font      = Font(bold=True, size=10, color=fg, name="Arial")
         c.fill      = _fill(bg)
@@ -356,10 +357,11 @@ def _write_owner_sheet(ws, owner, data, nom_idx):
             all_noms = []
             for ref_tuple in asset["refs"]:
                 all_noms.extend(nom_idx.get(ref_tuple, []))
+            doc_url = asset.get("doc_url", "")
 
             if not all_noms:
                 _write_asset_row(ws, row, asset["label"], asset["bal_str"],
-                                 "— not set —", "", "")
+                                 "— not set —", "", "", doc_url)
                 row += 1
             else:
                 for n in all_noms:
@@ -369,7 +371,7 @@ def _write_owner_sheet(ws, owner, data, nom_idx):
                     _write_asset_row(ws, row, asset["label"], asset["bal_str"],
                                      name or "— not set —",
                                      f"{pct:.0f}%" if pct else "",
-                                     notes)
+                                     notes, doc_url)
                     row += 1
 
         row += 1   # blank between sections
@@ -377,12 +379,12 @@ def _write_owner_sheet(ws, owner, data, nom_idx):
     ws.freeze_panes = "A2"
 
 
-def _write_asset_row(ws, row, label, bal, name, pct, notes):
+def _write_asset_row(ws, row, label, bal, name, pct, notes, doc_url=""):
     missing = not name or name == "— not set —"
     fill    = _fill("FEE2E2") if missing else _fill("F0FDF4")
 
-    vals   = [label, bal, name, pct, notes]
-    halign = ["left", "right", "left", "right", "left"]
+    vals   = [label, bal, name, pct, notes, ""]
+    halign = ["left", "right", "left", "right", "left", "center"]
     for col, (val, ha) in enumerate(zip(vals, halign), 1):
         c = ws.cell(row=row, column=col, value=val)
         c.fill      = fill
@@ -391,6 +393,16 @@ def _write_asset_row(ws, row, label, bal, name, pct, notes):
                            color=("DC2626" if col == 3 and missing else "111827"))
         c.alignment = Alignment(horizontal=ha, vertical="center",
                                 wrap_text=(col == 5))
+
+    # Doc hyperlink in column 6 (insurance only)
+    if doc_url:
+        c6 = ws.cell(row=row, column=6, value="📄 View")
+        c6.hyperlink  = doc_url
+        c6.font       = Font(size=9, name="Arial", color="0563C1", underline="single")
+        c6.fill       = fill
+        c6.border     = _border_thin()
+        c6.alignment  = Alignment(horizontal="center", vertical="center")
+
     ws.row_dimensions[row].height = 15
 
 

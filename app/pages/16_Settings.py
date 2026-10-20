@@ -5,7 +5,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 
 from utils.sidebar import render_sidebar
-from utils.db      import fetch, service_insert, service_delete_match
+from utils.db      import (fetch, service_insert, service_delete_match,
+                           service_update, upload_policy_doc, delete_policy_doc)
 
 st.set_page_config(page_title="Settings | Wealth Tracker", page_icon="⚙️", layout="wide")
 st.title("⚙️ Settings — Nominees")
@@ -418,10 +419,39 @@ def _owner_page(owner: str):
             for idx, p in enumerate(policies):
                 company   = p.get("company_name", "")
                 policy_no = p.get("policy_no", "")
+                policy_id = p.get("id")
                 ref       = f"{owner}|{policy_no}"
                 label     = f"{owner} — {company} {policy_no}"
                 st.markdown(f"**{company} — Policy {policy_no}**")
                 _multi_nominee_editor("insurance", ref, owner, label, f"{owner}_ins_{idx}")
+
+                # ── Policy document upload ────────────────────────────────
+                doc_url = p.get("doc_url", "") or ""
+                if doc_url:
+                    dc1, dc2 = st.columns([4, 1])
+                    dc1.markdown(f"📄 [Policy document attached]({doc_url})")
+                    if dc2.button("Remove", key=f"rm_doc_{owner}_{idx}"):
+                        delete_policy_doc(doc_url)
+                        service_update("cfg_insurance", {"id": policy_id}, {"doc_url": ""})
+                        st.success("Document removed.")
+                        st.rerun()
+                else:
+                    uploaded = st.file_uploader(
+                        "Attach policy card / document",
+                        type=["pdf", "jpg", "jpeg", "png"],
+                        key=f"doc_upload_{owner}_{idx}",
+                        label_visibility="collapsed",
+                    )
+                    if uploaded is not None:
+                        with st.spinner("Uploading…"):
+                            url = upload_policy_doc(
+                                owner, policy_no or str(idx),
+                                uploaded.name, uploaded.read(), uploaded.type,
+                            )
+                            service_update("cfg_insurance", {"id": policy_id}, {"doc_url": url})
+                        st.success("✅ Document uploaded.")
+                        st.rerun()
+
                 if idx < len(policies) - 1:
                     st.divider()
 

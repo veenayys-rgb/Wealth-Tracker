@@ -63,3 +63,30 @@ def service_delete_match(table: str, match: dict):
     for col, val in match.items():
         q = q.eq(col, val)
     q.execute()
+
+
+def service_update(table: str, match: dict, updates: dict):
+    """Update rows matching ALL key=value pairs, using service key."""
+    q = _service_client().table(table).update(updates)
+    for col, val in match.items():
+        q = q.eq(col, val)
+    q.execute()
+
+
+def upload_policy_doc(owner: str, policy_no: str, filename: str,
+                      data: bytes, mime: str) -> str:
+    """Upload a file to the policy-docs bucket; returns its public URL."""
+    path = f"{owner}/{policy_no or 'misc'}/{filename}"
+    _service_client().storage.from_("policy-docs").upload(
+        path, data, {"content-type": mime, "upsert": "true"}
+    )
+    return _service_client().storage.from_("policy-docs").get_public_url(path)
+
+
+def delete_policy_doc(url: str):
+    """Remove a file from the policy-docs bucket given its public URL."""
+    try:
+        path = url.split("/storage/v1/object/public/policy-docs/")[1]
+        _service_client().storage.from_("policy-docs").remove([path])
+    except Exception:
+        pass

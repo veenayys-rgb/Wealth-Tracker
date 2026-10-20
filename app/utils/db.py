@@ -90,3 +90,30 @@ def delete_policy_doc(url: str):
         _service_client().storage.from_("policy-docs").remove([path])
     except Exception:
         pass
+
+
+def fetch_nominees_map(asset_type: str, owner: str | None = None) -> dict:
+    """Returns {asset_ref: row} for nominees of the given asset_type."""
+    q = _service_client().table("cfg_nominees").select("*").eq("asset_type", asset_type)
+    if owner:
+        q = q.eq("owner", owner)
+    return {r["asset_ref"]: r for r in q.execute().data}
+
+
+def save_nominee(asset_type: str, asset_ref: str, owner: str, label: str,
+                 nominee_name: str, share_pct: float, relationship: str,
+                 registered: bool, notes: str):
+    """Replace the nominee for asset_type + asset_ref (delete-then-insert)."""
+    service_delete_match("cfg_nominees", {"asset_type": asset_type, "asset_ref": asset_ref})
+    if nominee_name:
+        service_insert("cfg_nominees", {
+            "asset_type":            asset_type,
+            "asset_ref":             asset_ref,
+            "owner":                 owner,
+            "label":                 label,
+            "nominee_name":          nominee_name,
+            "share_pct":             share_pct,
+            "relationship":          relationship,
+            "nomination_registered": registered,
+            "notes":                 notes,
+        })

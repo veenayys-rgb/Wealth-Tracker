@@ -5,9 +5,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.sidebar import render_sidebar, refresh_india_equity_prices, render_index_bar
 import pandas as pd
-from utils.db     import fetch, service_upsert, service_insert
+from utils.db     import fetch, service_upsert, service_insert, fetch_nominees_map, save_nominee
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date, utc_to_ist
+
+_NOMINEES = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
+_RELS     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
 
 st.set_page_config(page_title="India Equity | Wealth Tracker", page_icon="📈", layout="wide")
 st.title("📈 India Equity")
@@ -46,9 +49,10 @@ OWNERS = [
     ("Mom",    "mom_equity_india.json"),
 ]
 
-all_tabs   = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
-owner_tabs = all_tabs[:len(OWNERS)]
-tab_all    = all_tabs[-1]
+all_tabs     = st.tabs([o for o, _ in OWNERS] + ["🏠 All"])
+owner_tabs   = all_tabs[:len(OWNERS)]
+tab_all      = all_tabs[-1]
+eq_nom_map   = fetch_nominees_map("india_eq")
 
 
 def _day_view_india(dv_holdings, show_owner: str | None = None):
@@ -121,6 +125,41 @@ def _day_view_india(dv_holdings, show_owner: str | None = None):
 for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings  = load(fname)
+
+        # ── Demat Nominee ─────────────────────────────────────────────────────
+        _eq_nom = eq_nom_map.get(owner)
+        if _eq_nom:
+            _nom_disp = f"🎯 Nominee: **{_eq_nom['nominee_name']}** ({_eq_nom.get('relationship','')})  |  {'✓ Registered' if _eq_nom.get('nomination_registered') else '○ Not Registered'}"
+            _nc1, _nc2 = st.columns([4, 1])
+            _nc1.success(_nom_disp)
+        else:
+            _nc1, _nc2 = st.columns([4, 1])
+            _nc1.warning("⚠️  No nominee set for this demat account.")
+        if _nc2.button("✏️ Set Nominee", key=f"set_eq_nom_{owner}"):
+            st.session_state[f"show_eq_nom_{owner}"] = True
+        if st.session_state.get(f"show_eq_nom_{owner}"):
+            with st.form(f"eq_nom_form_{owner}"):
+                _NOMINEES_LOCAL = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
+                _RELS_LOCAL     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
+                _nom_idx = (_NOMINEES_LOCAL.index(_eq_nom["nominee_name"]) if _eq_nom and _eq_nom.get("nominee_name") in _NOMINEES_LOCAL else 0)
+                _rel_idx = (_RELS_LOCAL.index(_eq_nom["relationship"]) if _eq_nom and _eq_nom.get("relationship") in _RELS_LOCAL else 0)
+                _pct_v   = float(_eq_nom.get("share_pct", 100) or 100) if _eq_nom else 100.0
+                _reg_v   = bool(_eq_nom.get("nomination_registered")) if _eq_nom else False
+                _nts_v   = (_eq_nom.get("notes") or "") if _eq_nom else ""
+                fn1, fn2, fn3 = st.columns(3)
+                fn_name  = fn1.selectbox("Nominee Name", _NOMINEES_LOCAL, index=_nom_idx, key=f"eq_nn_{owner}")
+                fn_pct   = fn2.number_input("Share %", 0.0, 100.0, _pct_v, step=1.0, key=f"eq_pct_{owner}")
+                fn_rel   = fn3.selectbox("Relationship", _RELS_LOCAL, index=_rel_idx, key=f"eq_rel_{owner}")
+                fn4, fn5 = st.columns(2)
+                fn_reg   = fn4.checkbox("Nomination Registered", value=_reg_v, key=f"eq_reg_{owner}")
+                fn_notes = fn5.text_input("Notes", value=_nts_v, key=f"eq_notes_{owner}", placeholder="(optional)")
+                if st.form_submit_button("Save Nominee"):
+                    save_nominee("india_eq", owner, owner, f"{owner} Demat Account",
+                                 fn_name, fn_pct, fn_rel, fn_reg, fn_notes.strip())
+                    st.session_state[f"show_eq_nom_{owner}"] = False
+                    st.success("✅ Nominee saved.")
+                    st.rerun()
+
         sub_h, sub_d, sub_t = st.tabs(["📋 Holdings", "📊 Day View", "📝 Transactions"])
 
         # ── Holdings ──────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import streamlit as st
 import datetime
 from utils.sidebar import render_sidebar
 import pandas as pd
-from utils.db     import get_forex
+from utils.db     import get_forex, fetch_nominees_map, save_nominee
 from utils.config import load, save
 from utils.fmt    import fmt_date, parse_date
 
@@ -18,6 +18,9 @@ forex = get_forex()
 aed   = forex.get("AED_INR", 0)
 usd   = forex.get("USD_INR", 0)
 st.caption(f"AED/INR: {aed:.4f}  |  USD/INR: {usd:.4f}")
+
+_NOMINEES = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
+_RELS     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
 
 
 def _fx_uae(curr):
@@ -38,9 +41,31 @@ def _blank(v):
     return v if v else "—"
 
 
+def _nom_section(form_key, existing_nom=None):
+    """Render nominee fields inside a form; returns (name, pct, rel, reg, notes)."""
+    st.divider()
+    st.markdown("**🎯 Nominee**")
+    _nom_idx = (_NOMINEES.index(existing_nom["nominee_name"]) + 1
+                if existing_nom and existing_nom.get("nominee_name") in _NOMINEES else 0)
+    _rel_idx = (_RELS.index(existing_nom["relationship"]) + 1
+                if existing_nom and existing_nom.get("relationship") in _RELS else 0)
+    _pct_val = float(existing_nom.get("share_pct", 100) or 100) if existing_nom else 100.0
+    _reg_val = bool(existing_nom.get("nomination_registered", False)) if existing_nom else False
+    _notes_v = (existing_nom.get("notes") or "") if existing_nom else ""
+    nc1, nc2, nc3 = st.columns(3)
+    nom_name = nc1.selectbox("Nominee Name", [""] + _NOMINEES, index=_nom_idx, key=f"{form_key}_nn")
+    nom_pct  = nc2.number_input("Share %", 0.0, 100.0, _pct_val, step=1.0, key=f"{form_key}_pct")
+    nom_rel  = nc3.selectbox("Relationship", [""] + _RELS, index=_rel_idx, key=f"{form_key}_rel")
+    nc4, nc5 = st.columns(2)
+    nom_reg   = nc4.checkbox("Nomination Registered", value=_reg_val, key=f"{form_key}_reg")
+    nom_notes = nc5.text_input("Nominee Notes", value=_notes_v, key=f"{form_key}_notes", placeholder="(optional)")
+    return nom_name, nom_pct, nom_rel, nom_reg, nom_notes
+
+
 # ── India ─────────────────────────────────────────────────────────────────────
 with tab_india:
-    india = load("bank_india.json")
+    india    = load("bank_india.json")
+    nom_map  = fetch_nominees_map("bank_india")
     owner_tabs = st.tabs(OWNER_LABELS)
 
     for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
@@ -54,6 +79,7 @@ with tab_india:
                 for b in subset:
                     bal = float(b.get("balance", 0))
                     total_bal += bal
+                    ref = f"{b.get('owner','')}|{b.get('bank_name','')}|{b.get('account_no_last4','')}"
                     rows.append({
                         "☑":                   False,
                         "Bank Name":            _blank(b.get("bank_name")),
@@ -62,13 +88,17 @@ with tab_india:
                         "IFSC":                 _blank(b.get("ifsc")),
                         "Owner":                _blank(b.get("owner")),
                         "2nd Holder":           _blank(b.get("second_holder")),
+                        "Nom":                  "✓" if ref in nom_map else "✗",
                         "Balance (₹)":          f"₹ {bal:,.2f}",
                         "Balance as of":        fmt_date(b.get("balance_date", "")),
                     })
                 df = pd.DataFrame(rows)
                 edited = st.data_editor(
                     df,
-                    column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+                    column_config={
+                        "☑":   st.column_config.CheckboxColumn("☑", width="small"),
+                        "Nom": st.column_config.TextColumn("Nom", width="small"),
+                    },
                     disabled=[c for c in df.columns if c != "☑"],
                     hide_index=True, use_container_width=True,
                     key=f"de_india_{oi}",
@@ -137,6 +167,7 @@ with tab_india:
                     c7, c8 = st.columns(2)
                     balance      = c7.number_input("Current Balance (₹)", min_value=0.0, step=100.0, format="%.2f")
                     balance_date = c8.date_input("Balance as of", value=datetime.date.today(), format="DD/MM/YYYY")
+                    nom_name, nom_pct, nom_rel, nom_reg, nom_notes = _nom_section(f"add_bi_{oi}")
                     if st.form_submit_button("Add Account"):
                         if not bank_name.strip():
                             st.error("Bank Name is required.")
@@ -152,6 +183,11 @@ with tab_india:
                                 "balance_date":     str(balance_date),
                             })
                             save("bank_india.json", india)
+                            if nom_name:
+                                asset_ref = f"{owner}|{bank_name.strip()}|{acct_last4.strip()}"
+                                save_nominee("bank_india", asset_ref, owner,
+                                             f"{owner} — {bank_name.strip()} ...{acct_last4.strip()}",
+                                             nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
                             st.success(f"✅ {bank_name} ({account_type}) added.")
                             st.rerun()
 
@@ -164,6 +200,8 @@ with tab_india:
                     si   = opts.index(sel)
                     b    = subset[si]
                     fi   = idxmap[si][0]
+                    asset_ref_cur = f"{b.get('owner','')}|{b.get('bank_name','')}|{b.get('account_no_last4','')}"
+                    existing_nom  = nom_map.get(asset_ref_cur)
                     with st.form(f"edit_bank_india_{oi}"):
                         c1, c2 = st.columns(2)
                         bank_name    = c1.text_input("Bank Name",   value=b.get("bank_name",""))
@@ -186,6 +224,7 @@ with tab_india:
                         balance_date = c8.date_input("Balance as of",
                                                      value=parse_date(b.get("balance_date")) or datetime.date.today(),
                                                      format="DD/MM/YYYY", key=f"edit_india_bd_{oi}")
+                        nom_name, nom_pct, nom_rel, nom_reg, nom_notes = _nom_section(f"edit_bi_{oi}", existing_nom)
                         if st.form_submit_button("Save Changes"):
                             india[fi] = {
                                 "bank_name":        bank_name.strip(),
@@ -198,13 +237,18 @@ with tab_india:
                                 "balance_date":     str(balance_date),
                             }
                             save("bank_india.json", india)
+                            new_ref = f"{owner}|{bank_name.strip()}|{acct_last4.strip()}"
+                            save_nominee("bank_india", new_ref, owner,
+                                         f"{owner} — {bank_name.strip()} ...{acct_last4.strip()}",
+                                         nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
                             st.success("✅ Changes saved.")
                             st.rerun()
 
 
 # ── UAE ───────────────────────────────────────────────────────────────────────
 with tab_uae:
-    uae = load("bank_uae.json")
+    uae          = load("bank_uae.json")
+    nom_map_uae  = fetch_nominees_map("bank_uae")
     owner_tabs_u = st.tabs(OWNER_LABELS)
 
     for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs_u, OWNER_FILTERS)):
@@ -220,6 +264,7 @@ with tab_uae:
                     curr    = b.get("currency", "AED")
                     equiv   = round(bal * _fx_uae(curr), 2)
                     total_inr += equiv
+                    ref = f"{b.get('owner','')}|{b.get('bank_name','')}|{b.get('account_no','')}"
                     rows.append({
                         "☑":             False,
                         "Bank Name":     _blank(b.get("bank_name")),
@@ -227,6 +272,7 @@ with tab_uae:
                         "Account Type":  _blank(b.get("account_type")),
                         "Account No.":   _blank(b.get("account_no")),
                         "Owner":         _blank(b.get("owner")),
+                        "Nom":           "✓" if ref in nom_map_uae else "✗",
                         "Balance (FCY)": f"{bal:,.2f}",
                         "Equiv. INR":    f"₹ {equiv:,.2f}",
                         "Balance as of": fmt_date(b.get("balance_date", "")),
@@ -234,7 +280,10 @@ with tab_uae:
                 df = pd.DataFrame(rows)
                 edited = st.data_editor(
                     df,
-                    column_config={"☑": st.column_config.CheckboxColumn("☑", width="small")},
+                    column_config={
+                        "☑":   st.column_config.CheckboxColumn("☑", width="small"),
+                        "Nom": st.column_config.TextColumn("Nom", width="small"),
+                    },
                     disabled=[c for c in df.columns if c != "☑"],
                     hide_index=True, use_container_width=True,
                     key=f"de_uae_{oi}",
@@ -302,6 +351,7 @@ with tab_uae:
                     c7, c8 = st.columns(2)
                     balance_aed  = c7.number_input("Balance (FCY)", min_value=0.0, step=100.0, format="%.2f")
                     balance_date = c8.date_input("Balance as of", value=datetime.date.today(), format="DD/MM/YYYY")
+                    nom_name, nom_pct, nom_rel, nom_reg, nom_notes = _nom_section(f"add_uae_{oi}")
                     if st.form_submit_button("Add Account"):
                         if not bank_name.strip():
                             st.error("Bank Name is required.")
@@ -316,6 +366,11 @@ with tab_uae:
                                 "balance_date": str(balance_date),
                             })
                             save("bank_uae.json", uae)
+                            if nom_name:
+                                asset_ref = f"{owner}|{bank_name.strip()}|{account_no.strip()}"
+                                save_nominee("bank_uae", asset_ref, owner,
+                                             f"{owner} — {bank_name.strip()} {account_no.strip()}",
+                                             nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
                             st.success(f"✅ {bank_name} added.")
                             st.rerun()
 
@@ -328,6 +383,8 @@ with tab_uae:
                     si   = opts.index(sel)
                     b    = subset[si]
                     fi   = idxmap[si][0]
+                    asset_ref_cur = f"{b.get('owner','')}|{b.get('bank_name','')}|{b.get('account_no','')}"
+                    existing_nom  = nom_map_uae.get(asset_ref_cur)
                     with st.form(f"edit_bank_uae_{oi}"):
                         c1, c2 = st.columns(2)
                         bank_name    = c1.text_input("Bank Name",   value=b.get("bank_name",""))
@@ -351,6 +408,7 @@ with tab_uae:
                         balance_date = c8.date_input("Balance as of",
                                                      value=parse_date(b.get("balance_date")) or datetime.date.today(),
                                                      format="DD/MM/YYYY", key=f"edit_uae_bd_{oi}")
+                        nom_name, nom_pct, nom_rel, nom_reg, nom_notes = _nom_section(f"edit_uae_{oi}", existing_nom)
                         if st.form_submit_button("Save Changes"):
                             uae[fi] = {
                                 "bank_name":    bank_name.strip(),
@@ -362,5 +420,9 @@ with tab_uae:
                                 "balance_date": str(balance_date),
                             }
                             save("bank_uae.json", uae)
+                            new_ref = f"{owner}|{bank_name.strip()}|{account_no.strip()}"
+                            save_nominee("bank_uae", new_ref, owner,
+                                         f"{owner} — {bank_name.strip()} {account_no.strip()}",
+                                         nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
                             st.success("✅ Changes saved.")
                             st.rerun()

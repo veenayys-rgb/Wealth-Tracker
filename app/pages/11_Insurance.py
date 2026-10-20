@@ -1,5 +1,5 @@
 """Insurance — all policy types. Owner tabs + checkbox delete + auto-calc total premium."""
-import sys, os, datetime
+import sys, os, datetime, json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
@@ -7,7 +7,7 @@ from utils.sidebar import render_sidebar
 import pandas as pd
 from utils.config import load, save
 from utils.fmt    import fmt_date, parse_date
-from utils.db     import fetch_nominees_map, save_nominee, upload_policy_doc, delete_policy_doc
+from utils.db     import fetch_nominees_map, save_nominees, upload_policy_doc, delete_policy_doc
 
 st.set_page_config(page_title="Insurance | Wealth Tracker", page_icon="🛡️", layout="wide")
 st.title("🛡️ Insurance")
@@ -22,8 +22,7 @@ CURRENCIES   = ["INR", "AED", "USD", "GBP", "EUR", "Other"]
 OWNER_LABELS = ["👤 Vinay", "👤 Harsh", "👤 Anusha", "🏠 All"]
 OWNER_FILTERS = OWNERS + [None]
 
-_NOMINEES = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
-_RELS     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
+_RELS = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
 
 # Load all insurance nominees once (all owners)
 nom_map = fetch_nominees_map("insurance")
@@ -33,8 +32,67 @@ def _blank(v):
     return v if v else "—"
 
 
+def _parse_doc_urls(raw: str) -> list[str]:
+    if not raw:
+        return []
+    raw = raw.strip()
+    if raw.startswith("["):
+        try:
+            return [u for u in json.loads(raw) if u]
+        except Exception:
+            pass
+    return [raw] if raw else []
+
+
+def _encode_doc_urls(urls: list[str]) -> str:
+    clean = [u for u in urls if u]
+    return json.dumps(clean) if clean else ""
+
+
+def _nom_editor(form_key: str, existing_noms: list) -> pd.DataFrame:
+    st.divider()
+    st.markdown("**🎯 Nominees** *(total share % must = 100)*")
+    rows = ([{
+                "Name":         n.get("nominee_name", ""),
+                "Relationship": n.get("relationship", ""),
+                "Share %":      float(n.get("share_pct", 100) or 100),
+                "Registered":   bool(n.get("nomination_registered")),
+                "Notes":        n.get("notes", ""),
+             } for n in existing_noms]
+            if existing_noms
+            else [{"Name": "", "Relationship": "", "Share %": 100.0, "Registered": False, "Notes": ""}])
+    return st.data_editor(
+        pd.DataFrame(rows),
+        column_config={
+            "Name":         st.column_config.TextColumn("Name",         width="small"),
+            "Relationship": st.column_config.SelectboxColumn("Relationship", options=[""] + _RELS, width="small"),
+            "Share %":      st.column_config.NumberColumn("Share %",    min_value=0, max_value=100, step=1, width="small"),
+            "Registered":   st.column_config.CheckboxColumn("Reg?",     width="small"),
+            "Notes":        st.column_config.TextColumn("Notes"),
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        key=f"nom_ed_{form_key}",
+        use_container_width=True,
+    )
+
+
+def _parse_nom_df(df: pd.DataFrame) -> list[dict]:
+    result = []
+    for _, r in df.iterrows():
+        name = str(r.get("Name", "") or "").strip()
+        if name:
+            result.append({
+                "nominee_name":          name,
+                "share_pct":             float(r.get("Share %") or 0),
+                "relationship":          str(r.get("Relationship") or ""),
+                "nomination_registered": bool(r.get("Registered") or False),
+                "notes":                 str(r.get("Notes") or ""),
+            })
+    return result
+
+
 def _calc_total_premium(premium_amount, years_paid_str):
-    """Return premium_amount × years_paid if years_paid is numeric, else None."""
     try:
         years = float(str(years_paid_str).strip())
         return round(premium_amount * years, 2)
@@ -79,6 +137,7 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 sur_val  = float(p.get("surrender_value", 0))
                 tot_paid = total_p if total_p is not None else float(p.get("premium_paid_ytd", 0))
                 ref      = f"{p.get('owner','')}|{p.get('policy_no','')}"
+                doc_count = len(_parse_doc_urls(p.get("doc_url") or ""))
                 rows.append({
                     "☑":                  False,
                     "Company":            _blank(p.get("company_name")),
@@ -86,7 +145,6 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     "Policy No":          _blank(p.get("policy_no")),
                     "Owner":              _blank(p.get("owner")),
                     "Beneficiary":        _blank(p.get("beneficiary")),
-                    "Nom":                "✓" if ref in nom_map else "✗",
                     "Currency":           _blank(p.get("currency")),
                     "Insured Value":      f"{ins_val:,.2f}",
                     "Surrender Value":    f"{sur_val:,.2f}",
@@ -96,6 +154,8 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     "Total Premium Paid": f"{tot_paid:,.2f}",
                     "Next Due":           _due_label(p.get("next_premium_due", "")),
                     "Maturity Date":      fmt_date(p.get("maturity_date")),
+                    "Docs":               f"{doc_count}" if doc_count else "—",
+                    "Nom":                "✓" if ref in nom_map else "✗",
                 })
 
             df = pd.DataFrame(rows)
@@ -104,6 +164,7 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 column_config={
                     "☑":   st.column_config.CheckboxColumn("☑", width="small"),
                     "Nom": st.column_config.TextColumn("Nom", width="small"),
+                    "Docs": st.column_config.TextColumn("Docs", width="small"),
                 },
                 disabled=[c for c in df.columns if c != "☑"],
                 hide_index=True, use_container_width=True,
@@ -181,55 +242,51 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 next_due      = c12.date_input("Next Premium Due", value=datetime.date.today(), format="DD/MM/YYYY")
                 try_mat       = datetime.date(today.year + 1, today.month, today.day)
                 maturity_date = c13.date_input("Maturity Date",    value=try_mat, format="DD/MM/YYYY")
-
-                st.divider()
-                st.markdown("**🎯 Nominee**")
-                nc1, nc2, nc3 = st.columns(3)
-                nom_name = nc1.selectbox("Nominee Name", [""] + _NOMINEES, key=f"add_nom_name_{oi}")
-                nom_pct  = nc2.number_input("Share %", 0.0, 100.0, 100.0, step=1.0, key=f"add_nom_pct_{oi}")
-                nom_rel  = nc3.selectbox("Relationship", [""] + _RELS, key=f"add_nom_rel_{oi}")
-                nc4, nc5 = st.columns(2)
-                nom_reg   = nc4.checkbox("Nomination Registered", key=f"add_nom_reg_{oi}")
-                nom_notes = nc5.text_input("Nominee Notes", key=f"add_nom_notes_{oi}", placeholder="(optional)")
-                doc_file = st.file_uploader("Upload Policy Doc (PDF/JPG/PNG)", type=["pdf","jpg","jpeg","png"], key=f"add_doc_{oi}")
-
+                nom_ed  = _nom_editor(f"add_ins_{oi}", [])
+                doc_files = st.file_uploader("Upload Policy Docs (PDF/JPG/PNG)", type=["pdf","jpg","jpeg","png"],
+                                             accept_multiple_files=True, key=f"add_doc_{oi}")
                 if st.form_submit_button("Add Policy"):
                     if not company_name.strip():
                         st.error("Company Name is required.")
                     else:
-                        calc = _calc_total_premium(premium_amount, years_paid)
-                        doc_url = ""
-                        if doc_file:
-                            try:
-                                doc_url = upload_policy_doc(owner, policy_no.strip() or company_name.strip(),
-                                                            doc_file.name, doc_file.read(), doc_file.type)
-                            except Exception as e:
-                                st.warning(f"Policy doc upload failed: {e}")
-                        policies.append({
-                            "company_name":         company_name.strip(),
-                            "insurance_type":       insurance_type,
-                            "policy_no":            policy_no.strip(),
-                            "owner":                owner,
-                            "beneficiary":          beneficiary.strip(),
-                            "currency":             currency,
-                            "insured_value":        insured_value,
-                            "surrender_value":      surrender_value,
-                            "premium_amount":       premium_amount,
-                            "premium_payment_term": prem_term.strip(),
-                            "years_paid":           years_paid.strip(),
-                            "premium_paid_ytd":     calc if calc is not None else 0.0,
-                            "next_premium_due":     str(next_due),
-                            "maturity_date":        str(maturity_date),
-                            "doc_url":              doc_url,
-                        })
-                        save("insurance.json", policies)
-                        if nom_name:
+                        nom_list  = _parse_nom_df(nom_ed)
+                        total_pct = sum(n["share_pct"] for n in nom_list) if nom_list else 0
+                        if nom_list and abs(total_pct - 100) > 0.5:
+                            st.error(f"Nominee shares must total 100% (currently {total_pct:.0f}%)")
+                        else:
+                            calc = _calc_total_premium(premium_amount, years_paid)
+                            doc_url_list = []
+                            for df_file in (doc_files or []):
+                                try:
+                                    url = upload_policy_doc(owner, policy_no.strip() or company_name.strip(),
+                                                            df_file.name, df_file.read(), df_file.type)
+                                    doc_url_list.append(url)
+                                except Exception as e:
+                                    st.warning(f"Doc upload failed ({df_file.name}): {e}")
+                            policies.append({
+                                "company_name":         company_name.strip(),
+                                "insurance_type":       insurance_type,
+                                "policy_no":            policy_no.strip(),
+                                "owner":                owner,
+                                "beneficiary":          beneficiary.strip(),
+                                "currency":             currency,
+                                "insured_value":        insured_value,
+                                "surrender_value":      surrender_value,
+                                "premium_amount":       premium_amount,
+                                "premium_payment_term": prem_term.strip(),
+                                "years_paid":           years_paid.strip(),
+                                "premium_paid_ytd":     calc if calc is not None else 0.0,
+                                "next_premium_due":     str(next_due),
+                                "maturity_date":        str(maturity_date),
+                                "doc_url":              _encode_doc_urls(doc_url_list),
+                            })
+                            save("insurance.json", policies)
                             asset_ref = f"{owner}|{policy_no.strip()}"
-                            save_nominee("insurance", asset_ref, owner,
-                                         f"{owner} — {company_name.strip()} {policy_no.strip()}",
-                                         nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
-                        st.success(f"✅ {company_name} policy added.")
-                        st.rerun()
+                            save_nominees("insurance", asset_ref, owner,
+                                          f"{owner} — {company_name.strip()} {policy_no.strip()}",
+                                          nom_list)
+                            st.success(f"✅ {company_name} policy added.")
+                            st.rerun()
 
         # ── EDIT ──────────────────────────────────────────────────────────────
         if subset:
@@ -241,19 +298,23 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                 p    = subset[si]
                 fi   = idxmap[si][0]
 
-                # Load existing nominee for pre-population
                 asset_ref_cur = f"{p.get('owner','')}|{p.get('policy_no','')}"
-                existing_nom  = nom_map.get(asset_ref_cur)
-                cur_doc_url   = (p.get("doc_url") or "").strip()
-                if cur_doc_url:
-                    dc1, dc2 = st.columns([3, 1])
-                    dc1.markdown(f"📄 [View policy document]({cur_doc_url})")
-                    if dc2.button("🗑 Remove doc", key=f"rm_doc_{oi}"):
-                        delete_policy_doc(cur_doc_url)
-                        policies[fi]["doc_url"] = ""
-                        save("insurance.json", policies)
-                        st.success("✅ Document removed.")
-                        st.rerun()
+                existing_noms = nom_map.get(asset_ref_cur, [])
+                cur_doc_urls  = _parse_doc_urls(p.get("doc_url") or "")
+
+                # Show existing docs with remove buttons (outside form)
+                if cur_doc_urls:
+                    st.markdown("**📎 Attached Documents:**")
+                    for di, durl in enumerate(cur_doc_urls):
+                        dc1, dc2 = st.columns([4, 1])
+                        dc1.markdown(f"📄 [Policy doc {di+1}]({durl})")
+                        if dc2.button("🗑 Remove", key=f"rm_doc_{oi}_{di}"):
+                            delete_policy_doc(durl)
+                            new_urls = [u for j, u in enumerate(cur_doc_urls) if j != di]
+                            policies[fi]["doc_url"] = _encode_doc_urls(new_urls)
+                            save("insurance.json", policies)
+                            st.success("✅ Document removed.")
+                            st.rerun()
 
                 with st.form(f"edit_ins_{oi}"):
                     c1, c2, c3 = st.columns(3)
@@ -284,57 +345,45 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
                     c12, c13 = st.columns(2)
                     next_due      = c12.date_input("Next Premium Due", value=parse_date(p.get("next_premium_due")) or datetime.date.today(), format="DD/MM/YYYY", key=f"edit_ins_nd_{oi}")
                     maturity_date = c13.date_input("Maturity Date",    value=parse_date(p.get("maturity_date"))    or datetime.date.today(), format="DD/MM/YYYY", key=f"edit_ins_mat_{oi}")
-
-                    st.divider()
-                    st.markdown("**🎯 Nominee**")
-                    _nom_idx = (_NOMINEES.index(existing_nom["nominee_name"]) + 1
-                                if existing_nom and existing_nom.get("nominee_name") in _NOMINEES else 0)
-                    _rel_idx = (_RELS.index(existing_nom["relationship"]) + 1
-                                if existing_nom and existing_nom.get("relationship") in _RELS else 0)
-                    _pct_val = float(existing_nom.get("share_pct", 100) or 100) if existing_nom else 100.0
-                    _reg_val = bool(existing_nom.get("nomination_registered", False)) if existing_nom else False
-                    _notes_v = (existing_nom.get("notes") or "") if existing_nom else ""
-                    nc1, nc2, nc3 = st.columns(3)
-                    nom_name = nc1.selectbox("Nominee Name", [""] + _NOMINEES, index=_nom_idx, key=f"edit_nom_name_{oi}")
-                    nom_pct  = nc2.number_input("Share %", 0.0, 100.0, _pct_val, step=1.0, key=f"edit_nom_pct_{oi}")
-                    nom_rel  = nc3.selectbox("Relationship", [""] + _RELS, index=_rel_idx, key=f"edit_nom_rel_{oi}")
-                    nc4, nc5 = st.columns(2)
-                    nom_reg   = nc4.checkbox("Nomination Registered", value=_reg_val, key=f"edit_nom_reg_{oi}")
-                    nom_notes = nc5.text_input("Nominee Notes", value=_notes_v, key=f"edit_nom_notes_{oi}")
-                    doc_file  = st.file_uploader("Replace Policy Doc (PDF/JPG/PNG)", type=["pdf","jpg","jpeg","png"], key=f"edit_doc_{oi}")
-
+                    nom_ed   = _nom_editor(f"edit_ins_{oi}", existing_noms)
+                    doc_files = st.file_uploader("Add More Policy Docs (PDF/JPG/PNG)", type=["pdf","jpg","jpeg","png"],
+                                                 accept_multiple_files=True, key=f"edit_doc_{oi}")
                     if st.form_submit_button("Save Changes"):
-                        calc = _calc_total_premium(premium_amount, years_paid)
-                        new_doc_url = cur_doc_url
-                        if doc_file:
-                            try:
-                                if cur_doc_url:
-                                    delete_policy_doc(cur_doc_url)
-                                new_doc_url = upload_policy_doc(owner, policy_no.strip() or company_name.strip(),
-                                                                doc_file.name, doc_file.read(), doc_file.type)
-                            except Exception as e:
-                                st.warning(f"Doc upload failed: {e}")
-                        policies[fi] = {
-                            "company_name":         company_name.strip(),
-                            "insurance_type":       insurance_type,
-                            "policy_no":            policy_no.strip(),
-                            "owner":                owner,
-                            "beneficiary":          beneficiary.strip(),
-                            "currency":             currency,
-                            "insured_value":        insured_value,
-                            "surrender_value":      surrender_value,
-                            "premium_amount":       premium_amount,
-                            "premium_payment_term": prem_term.strip(),
-                            "years_paid":           years_paid.strip(),
-                            "premium_paid_ytd":     calc if calc is not None else float(p.get("premium_paid_ytd",0)),
-                            "next_premium_due":     str(next_due),
-                            "maturity_date":        str(maturity_date),
-                            "doc_url":              new_doc_url,
-                        }
-                        save("insurance.json", policies)
-                        new_ref = f"{owner}|{policy_no.strip()}"
-                        save_nominee("insurance", new_ref, owner,
-                                     f"{owner} — {company_name.strip()} {policy_no.strip()}",
-                                     nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
-                        st.success("✅ Changes saved.")
-                        st.rerun()
+                        nom_list  = _parse_nom_df(nom_ed)
+                        total_pct = sum(n["share_pct"] for n in nom_list) if nom_list else 0
+                        if nom_list and abs(total_pct - 100) > 0.5:
+                            st.error(f"Nominee shares must total 100% (currently {total_pct:.0f}%)")
+                        else:
+                            calc = _calc_total_premium(premium_amount, years_paid)
+                            new_doc_url_list = list(cur_doc_urls)
+                            for df_file in (doc_files or []):
+                                try:
+                                    url = upload_policy_doc(owner, policy_no.strip() or company_name.strip(),
+                                                            df_file.name, df_file.read(), df_file.type)
+                                    new_doc_url_list.append(url)
+                                except Exception as e:
+                                    st.warning(f"Doc upload failed ({df_file.name}): {e}")
+                            policies[fi] = {
+                                "company_name":         company_name.strip(),
+                                "insurance_type":       insurance_type,
+                                "policy_no":            policy_no.strip(),
+                                "owner":                owner,
+                                "beneficiary":          beneficiary.strip(),
+                                "currency":             currency,
+                                "insured_value":        insured_value,
+                                "surrender_value":      surrender_value,
+                                "premium_amount":       premium_amount,
+                                "premium_payment_term": prem_term.strip(),
+                                "years_paid":           years_paid.strip(),
+                                "premium_paid_ytd":     calc if calc is not None else float(p.get("premium_paid_ytd",0)),
+                                "next_premium_due":     str(next_due),
+                                "maturity_date":        str(maturity_date),
+                                "doc_url":              _encode_doc_urls(new_doc_url_list),
+                            }
+                            save("insurance.json", policies)
+                            new_ref = f"{owner}|{policy_no.strip()}"
+                            save_nominees("insurance", new_ref, owner,
+                                          f"{owner} — {company_name.strip()} {policy_no.strip()}",
+                                          nom_list)
+                            st.success("✅ Changes saved.")
+                            st.rerun()

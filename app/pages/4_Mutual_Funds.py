@@ -6,12 +6,54 @@ import streamlit as st
 from utils.sidebar import render_sidebar, apply_prev_nav
 import pandas as pd
 import datetime, urllib.request, ssl
-from utils.db     import fetch, service_upsert, service_insert, fetch_nominees_map, save_nominee
+from utils.db     import fetch, service_upsert, service_insert, fetch_nominees_map, save_nominees
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date
 
-_NOMINEES = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
-_RELS     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
+_RELS = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
+
+
+def _nom_editor(form_key: str, existing_noms: list) -> "pd.DataFrame":
+    st.divider()
+    st.markdown("**🎯 Nominees** *(total share % must = 100)*")
+    rows = ([{
+                "Name":         n.get("nominee_name", ""),
+                "Relationship": n.get("relationship", ""),
+                "Share %":      float(n.get("share_pct", 100) or 100),
+                "Registered":   bool(n.get("nomination_registered")),
+                "Notes":        n.get("notes", ""),
+             } for n in existing_noms]
+            if existing_noms
+            else [{"Name": "", "Relationship": "", "Share %": 100.0, "Registered": False, "Notes": ""}])
+    return st.data_editor(
+        pd.DataFrame(rows),
+        column_config={
+            "Name":         st.column_config.TextColumn("Name",         width="small"),
+            "Relationship": st.column_config.SelectboxColumn("Relationship", options=[""] + _RELS, width="small"),
+            "Share %":      st.column_config.NumberColumn("Share %",    min_value=0, max_value=100, step=1, width="small"),
+            "Registered":   st.column_config.CheckboxColumn("Reg?",     width="small"),
+            "Notes":        st.column_config.TextColumn("Notes"),
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        key=f"nom_ed_{form_key}",
+        use_container_width=True,
+    )
+
+
+def _parse_nom_df(df: "pd.DataFrame") -> list[dict]:
+    result = []
+    for _, r in df.iterrows():
+        name = str(r.get("Name", "") or "").strip()
+        if name:
+            result.append({
+                "nominee_name":          name,
+                "share_pct":             float(r.get("Share %") or 0),
+                "relationship":          str(r.get("Relationship") or ""),
+                "nomination_registered": bool(r.get("Registered") or False),
+                "notes":                 str(r.get("Notes") or ""),
+            })
+    return result
 
 AMFI_URL = "https://www.amfiindia.com/spages/NAVAll.txt"
 
@@ -213,7 +255,6 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     total_cv  += cv
                     ref   = f"{owner}_{isin}"
                     rows.append({
-                        "Nom":               "✓" if ref in nom_map else "✗",
                         "Fund Name (AMFI)":  amfi or h.get("fund_name") or "—",
                         "Units Held":        units,
                         "Avg NAV (₹)":       anav,
@@ -225,7 +266,9 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         "% of Portfolio":    0.0,
                         "Folio No":          h.get("folio_no") or "—",
                         "ISIN No":           isin or "—",
+                        "Broker":            h.get("broker", "") or "",
                         "Notes":             h.get("notes", "") or "",
+                        "Nom":               "✓" if ref in nom_map else "✗",
                     })
 
                 total_cv_safe = total_cv if total_cv > 0 else 1.0
@@ -250,7 +293,10 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                                      "color:red"   if isinstance(v, float) and v <  0 else "",
                            subset=["Gain/Loss (₹)", "Return %"]),
                     use_container_width=True, hide_index=True,
-                    column_config={"Fund Name (AMFI)": st.column_config.TextColumn(width="large")},
+                    column_config={
+                        "Fund Name (AMFI)": st.column_config.TextColumn(width="medium"),
+                        "Nom":              st.column_config.TextColumn("Nom", width="small"),
+                    },
                 )
                 total_metrics(total_inv, total_cv)
             else:
@@ -273,6 +319,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                             "Units Held":       float(h.get("units", 0)),
                             "Avg NAV (₹)":      float(h.get("avg_nav", 0)),
                             "Current NAV (₹)":  nav_val,
+                            "Broker":           h.get("broker", ""),
                             "Notes":            h.get("notes", ""),
                         })
                     edited = st.data_editor(
@@ -280,10 +327,11 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         column_config={
                             "☑":               st.column_config.CheckboxColumn("☑", width="small"),
                             "ISIN":            st.column_config.TextColumn(disabled=True),
-                            "Fund Name (AMFI)": st.column_config.TextColumn(disabled=True, width="large"),
+                            "Fund Name (AMFI)": st.column_config.TextColumn(disabled=True, width="medium"),
                             "Units Held":       st.column_config.NumberColumn(format="%.3f", min_value=0.0),
                             "Avg NAV (₹)":      st.column_config.NumberColumn(format="%.4f", min_value=0.0),
                             "Current NAV (₹)":  st.column_config.NumberColumn(format="%.4f", min_value=0.0),
+                            "Broker":           st.column_config.TextColumn(width="small"),
                             "Notes":            st.column_config.TextColumn(width="medium"),
                         },
                         hide_index=True, use_container_width=True, key=f"qe_{owner}",
@@ -294,6 +342,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         for i in range(len(holdings)):
                             holdings[i]["units"]   = float(edited.iloc[i]["Units Held"])
                             holdings[i]["avg_nav"] = float(edited.iloc[i]["Avg NAV (₹)"])
+                            holdings[i]["broker"]  = str(edited.iloc[i]["Broker"] or "")
                             holdings[i]["notes"]   = str(edited.iloc[i]["Notes"] or "")
                             new_nav = float(edited.iloc[i]["Current NAV (₹)"] or 0)
                             if new_nav > 0:
@@ -331,36 +380,34 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     c3, c4 = st.columns(2)
                     units   = c3.number_input("Units Held",  min_value=0.0, step=0.001, format="%.3f", key=f"units_{owner}")
                     avg_nav = c4.number_input("Avg NAV (₹)", min_value=0.0, step=0.01,  format="%.4f", key=f"anav_{owner}")
+                    broker  = st.text_input("Broker (optional)", key=f"broker_mf_{owner}")
                     notes   = st.text_input("Notes (optional)", key=f"notes_mf_{owner}")
-                    st.divider()
-                    st.markdown("**🎯 Nominee**")
-                    _nc1, _nc2, _nc3 = st.columns(3)
-                    nom_name  = _nc1.selectbox("Nominee Name", [""] + _NOMINEES, key=f"add_mf_nn_{owner}")
-                    nom_pct   = _nc2.number_input("Share %", 0.0, 100.0, 100.0, step=1.0, key=f"add_mf_pct_{owner}")
-                    nom_rel   = _nc3.selectbox("Relationship", [""] + _RELS, key=f"add_mf_rel_{owner}")
-                    _nc4, _nc5 = st.columns(2)
-                    nom_reg   = _nc4.checkbox("Nomination Registered", key=f"add_mf_reg_{owner}")
-                    nom_notes = _nc5.text_input("Nominee Notes", key=f"add_mf_notes_{owner}", placeholder="(optional)")
+                    nom_ed  = _nom_editor(f"add_mf_{owner}", [])
                     if st.form_submit_button("Add Fund"):
                         if not isin_in.strip():
                             st.error("ISIN is required.")
                         else:
-                            holdings.append({
-                                "folio_no":  folio.strip(),
-                                "isin":      isin_in.strip().upper(),
-                                "fund_name": fund_name.strip(),
-                                "units":     units,
-                                "avg_nav":   avg_nav,
-                                "notes":     notes.strip(),
-                            })
-                            save(fname, holdings)
-                            if nom_name:
+                            nom_list  = _parse_nom_df(nom_ed)
+                            total_pct = sum(n["share_pct"] for n in nom_list) if nom_list else 0
+                            if nom_list and abs(total_pct - 100) > 0.5:
+                                st.error(f"Nominee shares must total 100% (currently {total_pct:.0f}%)")
+                            else:
+                                holdings.append({
+                                    "folio_no":  folio.strip(),
+                                    "isin":      isin_in.strip().upper(),
+                                    "fund_name": fund_name.strip(),
+                                    "units":     units,
+                                    "avg_nav":   avg_nav,
+                                    "broker":    broker.strip(),
+                                    "notes":     notes.strip(),
+                                })
+                                save(fname, holdings)
                                 asset_ref = f"{owner}_{isin_in.strip().upper()}"
-                                save_nominee("mf", asset_ref, owner,
-                                             f"{owner} — {fund_name.strip() or isin_in.strip().upper()}",
-                                             nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
-                            st.success(f"✅ Fund added for {owner}.")
-                            st.rerun()
+                                save_nominees("mf", asset_ref, owner,
+                                              f"{owner} — {fund_name.strip() or isin_in.strip().upper()}",
+                                              nom_list)
+                                st.success(f"✅ Fund added for {owner}.")
+                                st.rerun()
 
             # ── Edit details ──────────────────────────────────────────────
             if holdings:
@@ -369,43 +416,35 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                     sel  = st.selectbox("Select fund", opts, key=f"edit_mf_sel_{owner}")
                     idx  = opts.index(sel)
                     h    = holdings[idx]
-                    existing_nom = nom_map.get(f"{owner}_{h.get('isin','').upper()}")
+                    existing_noms = nom_map.get(f"{owner}_{h.get('isin','').upper()}", [])
                     with st.form(f"edit_mf_{owner}"):
                         c1, c2 = st.columns(2)
                         folio     = c1.text_input("Folio No",  value=h.get("folio_no",""),  key=f"efolio_{owner}")
                         isin_in   = c2.text_input("ISIN No",   value=h.get("isin",""),      key=f"eisin_{owner}")
                         fund_name = st.text_input("Fund Name", value=h.get("fund_name",""), key=f"efn_{owner}")
+                        broker_ed = st.text_input("Broker (optional)", value=h.get("broker",""), key=f"ebroker_mf_{owner}")
                         notes_ed  = st.text_input("Notes (optional)", value=h.get("notes",""), key=f"enotes_mf_{owner}")
-                        st.divider()
-                        st.markdown("**🎯 Nominee**")
-                        _nom_idx = (_NOMINEES.index(existing_nom["nominee_name"]) + 1
-                                    if existing_nom and existing_nom.get("nominee_name") in _NOMINEES else 0)
-                        _rel_idx = (_RELS.index(existing_nom["relationship"]) + 1
-                                    if existing_nom and existing_nom.get("relationship") in _RELS else 0)
-                        _pct_v   = float(existing_nom.get("share_pct", 100) or 100) if existing_nom else 100.0
-                        _reg_v   = bool(existing_nom.get("nomination_registered")) if existing_nom else False
-                        _nts_v   = (existing_nom.get("notes") or "") if existing_nom else ""
-                        _ec1, _ec2, _ec3 = st.columns(3)
-                        nom_name  = _ec1.selectbox("Nominee Name", [""] + _NOMINEES, index=_nom_idx, key=f"edit_mf_nn_{owner}")
-                        nom_pct   = _ec2.number_input("Share %", 0.0, 100.0, _pct_v, step=1.0, key=f"edit_mf_pct_{owner}")
-                        nom_rel   = _ec3.selectbox("Relationship", [""] + _RELS, index=_rel_idx, key=f"edit_mf_rel_{owner}")
-                        _ec4, _ec5 = st.columns(2)
-                        nom_reg   = _ec4.checkbox("Nomination Registered", value=_reg_v, key=f"edit_mf_reg_{owner}")
-                        nom_notes = _ec5.text_input("Nominee Notes", value=_nts_v, key=f"edit_mf_notes_{owner}")
+                        nom_ed    = _nom_editor(f"edit_mf_{owner}", existing_noms)
                         if st.form_submit_button("Save Details"):
-                            holdings[idx].update({
-                                "folio_no":  folio.strip(),
-                                "isin":      isin_in.strip().upper(),
-                                "fund_name": fund_name.strip(),
-                                "notes":     notes_ed.strip(),
-                            })
-                            save(fname, holdings)
-                            new_ref = f"{owner}_{isin_in.strip().upper()}"
-                            save_nominee("mf", new_ref, owner,
-                                         f"{owner} — {fund_name.strip() or isin_in.strip().upper()}",
-                                         nom_name, nom_pct, nom_rel, nom_reg, nom_notes.strip())
-                            st.success("✅ Details saved.")
-                            st.rerun()
+                            nom_list  = _parse_nom_df(nom_ed)
+                            total_pct = sum(n["share_pct"] for n in nom_list) if nom_list else 0
+                            if nom_list and abs(total_pct - 100) > 0.5:
+                                st.error(f"Nominee shares must total 100% (currently {total_pct:.0f}%)")
+                            else:
+                                holdings[idx].update({
+                                    "folio_no":  folio.strip(),
+                                    "isin":      isin_in.strip().upper(),
+                                    "fund_name": fund_name.strip(),
+                                    "broker":    broker_ed.strip(),
+                                    "notes":     notes_ed.strip(),
+                                })
+                                save(fname, holdings)
+                                new_ref = f"{owner}_{isin_in.strip().upper()}"
+                                save_nominees("mf", new_ref, owner,
+                                              f"{owner} — {fund_name.strip() or isin_in.strip().upper()}",
+                                              nom_list)
+                                st.success("✅ Details saved.")
+                                st.rerun()
 
             # ── Redeem ─────────────────────────────────────────────────────
             if holdings:
@@ -556,7 +595,7 @@ with tab_all:
                                  "color:red"   if isinstance(v, float) and v <  0 else "",
                        subset=["Gain/Loss (₹)", "Return %"]),
                 use_container_width=True, hide_index=True,
-                column_config={"Fund Name (AMFI)": st.column_config.TextColumn(width="large")},
+                column_config={"Fund Name (AMFI)": st.column_config.TextColumn(width="medium")},
             )
             total_metrics(grand_inv, grand_cv)
         else:

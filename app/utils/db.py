@@ -93,27 +93,40 @@ def delete_policy_doc(url: str):
 
 
 def fetch_nominees_map(asset_type: str, owner: str | None = None) -> dict:
-    """Returns {asset_ref: row} for nominees of the given asset_type."""
+    """Returns {asset_ref: [list_of_rows]} for nominees of the given asset_type."""
     q = _service_client().table("cfg_nominees").select("*").eq("asset_type", asset_type)
     if owner:
         q = q.eq("owner", owner)
-    return {r["asset_ref"]: r for r in q.execute().data}
+    result: dict[str, list] = {}
+    for r in q.execute().data:
+        result.setdefault(r["asset_ref"], []).append(r)
+    return result
 
 
-def save_nominee(asset_type: str, asset_ref: str, owner: str, label: str,
-                 nominee_name: str, share_pct: float, relationship: str,
-                 registered: bool, notes: str):
-    """Replace the nominee for asset_type + asset_ref (delete-then-insert)."""
+def save_nominees(asset_type: str, asset_ref: str, owner: str, label: str,
+                  nominees: list[dict]):
+    """Replace all nominees for asset_type + asset_ref.
+    Each dict: nominee_name, share_pct, relationship, nomination_registered, notes."""
     service_delete_match("cfg_nominees", {"asset_type": asset_type, "asset_ref": asset_ref})
-    if nominee_name:
-        service_insert("cfg_nominees", {
-            "asset_type":            asset_type,
-            "asset_ref":             asset_ref,
-            "owner":                 owner,
-            "label":                 label,
-            "nominee_name":          nominee_name,
-            "share_pct":             share_pct,
-            "relationship":          relationship,
-            "nomination_registered": registered,
-            "notes":                 notes,
-        })
+    for n in nominees:
+        name = str(n.get("nominee_name", "")).strip()
+        if name:
+            service_insert("cfg_nominees", {
+                "asset_type":            asset_type,
+                "asset_ref":             asset_ref,
+                "owner":                 owner,
+                "label":                 label,
+                "nominee_name":          name,
+                "share_pct":             float(n.get("share_pct", 0)),
+                "relationship":          str(n.get("relationship", "") or ""),
+                "nomination_registered": bool(n.get("nomination_registered", False)),
+                "notes":                 str(n.get("notes", "") or ""),
+            })
+
+
+def fetch_demat_accounts(owner: str | None = None) -> list[dict]:
+    """Fetch demat accounts from cfg_demat_accounts, optionally filtered by owner."""
+    q = _service_client().table("cfg_demat_accounts").select("*")
+    if owner:
+        q = q.eq("owner", owner)
+    return q.order("id").execute().data

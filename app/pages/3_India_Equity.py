@@ -5,12 +5,54 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.sidebar import render_sidebar, refresh_india_equity_prices, render_index_bar
 import pandas as pd
-from utils.db     import fetch, service_upsert, service_insert, fetch_nominees_map, save_nominee
+from utils.db     import fetch, service_upsert, service_insert, service_delete, fetch_nominees_map, save_nominees, fetch_demat_accounts
 from utils.config import load, save
 from utils.fmt    import ind_num, total_metrics, fmt_date, parse_date, utc_to_ist
 
-_NOMINEES = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
-_RELS     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
+_RELS = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
+
+
+def _nom_editor(form_key: str, existing_noms: list) -> "pd.DataFrame":
+    st.divider()
+    st.markdown("**🎯 Nominees** *(total share % must = 100)*")
+    rows = ([{
+                "Name":         n.get("nominee_name", ""),
+                "Relationship": n.get("relationship", ""),
+                "Share %":      float(n.get("share_pct", 100) or 100),
+                "Registered":   bool(n.get("nomination_registered")),
+                "Notes":        n.get("notes", ""),
+             } for n in existing_noms]
+            if existing_noms
+            else [{"Name": "", "Relationship": "", "Share %": 100.0, "Registered": False, "Notes": ""}])
+    return st.data_editor(
+        pd.DataFrame(rows),
+        column_config={
+            "Name":         st.column_config.TextColumn("Name",         width="small"),
+            "Relationship": st.column_config.SelectboxColumn("Relationship", options=[""] + _RELS, width="small"),
+            "Share %":      st.column_config.NumberColumn("Share %",    min_value=0, max_value=100, step=1, width="small"),
+            "Registered":   st.column_config.CheckboxColumn("Reg?",     width="small"),
+            "Notes":        st.column_config.TextColumn("Notes"),
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        key=f"nom_ed_{form_key}",
+        use_container_width=True,
+    )
+
+
+def _parse_nom_df(df: "pd.DataFrame") -> list[dict]:
+    result = []
+    for _, r in df.iterrows():
+        name = str(r.get("Name", "") or "").strip()
+        if name:
+            result.append({
+                "nominee_name":          name,
+                "share_pct":             float(r.get("Share %") or 0),
+                "relationship":          str(r.get("Relationship") or ""),
+                "nomination_registered": bool(r.get("Registered") or False),
+                "notes":                 str(r.get("Notes") or ""),
+            })
+    return result
 
 st.set_page_config(page_title="India Equity | Wealth Tracker", page_icon="📈", layout="wide")
 st.title("📈 India Equity")
@@ -126,12 +168,43 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings  = load(fname)
 
+        # ── Demat Accounts ────────────────────────────────────────────────────
+        demat_accts = fetch_demat_accounts(owner)
+        if demat_accts:
+            parts = [f"{a['account_type']}: {a['account_no']}" for a in demat_accts]
+            st.info(f"🏦 Demat: {' | '.join(parts)}")
+        else:
+            st.info("🏦 Demat account numbers not recorded.")
+        with st.expander("🏦 Manage Demat Accounts", expanded=False):
+            if demat_accts:
+                for a in demat_accts:
+                    _da1, _da2 = st.columns([5, 1])
+                    _da1.text(f"{a.get('account_type','')} ({a.get('depository','NSDL')}): {a.get('account_no','')}")
+                    if _da2.button("🗑", key=f"del_demat_{a['id']}"):
+                        service_delete("cfg_demat_accounts", "id", [a["id"]])
+                        st.rerun()
+            with st.form(f"add_demat_{owner}"):
+                _d1, _d2, _d3 = st.columns(3)
+                _acct_type  = _d1.selectbox("Type", ["NRO", "NRE", "Resident"], key=f"dt_{owner}")
+                _acct_no    = _d2.text_input("Account No.", key=f"dno_{owner}")
+                _depository = _d3.selectbox("Depository", ["NSDL", "CDSL"], key=f"ddep_{owner}")
+                if st.form_submit_button("Add"):
+                    if _acct_no.strip():
+                        from utils.db import service_insert as _si
+                        _si("cfg_demat_accounts", {
+                            "owner": owner, "account_type": _acct_type,
+                            "account_no": _acct_no.strip(), "depository": _depository,
+                        })
+                        st.success("✅ Added.")
+                        st.rerun()
+
         # ── Demat Nominee ─────────────────────────────────────────────────────
-        _eq_nom = eq_nom_map.get(owner)
-        if _eq_nom:
-            _nom_disp = f"🎯 Nominee: **{_eq_nom['nominee_name']}** ({_eq_nom.get('relationship','')})  |  {'✓ Registered' if _eq_nom.get('nomination_registered') else '○ Not Registered'}"
+        _eq_noms = eq_nom_map.get(owner, [])
+        if _eq_noms:
+            _nom_parts = [f"**{n['nominee_name']}** {n.get('share_pct',100):.0f}% ({n.get('relationship','')}) {'✓' if n.get('nomination_registered') else '○'}"
+                          for n in _eq_noms]
             _nc1, _nc2 = st.columns([4, 1])
-            _nc1.success(_nom_disp)
+            _nc1.success("🎯 Nominee(s): " + "  |  ".join(_nom_parts))
         else:
             _nc1, _nc2 = st.columns([4, 1])
             _nc1.warning("⚠️  No nominee set for this demat account.")
@@ -139,26 +212,17 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
             st.session_state[f"show_eq_nom_{owner}"] = True
         if st.session_state.get(f"show_eq_nom_{owner}"):
             with st.form(f"eq_nom_form_{owner}"):
-                _NOMINEES_LOCAL = ["Anusha", "Vinay", "Harsh", "Mom", "Other"]
-                _RELS_LOCAL     = ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Other"]
-                _nom_idx = (_NOMINEES_LOCAL.index(_eq_nom["nominee_name"]) if _eq_nom and _eq_nom.get("nominee_name") in _NOMINEES_LOCAL else 0)
-                _rel_idx = (_RELS_LOCAL.index(_eq_nom["relationship"]) if _eq_nom and _eq_nom.get("relationship") in _RELS_LOCAL else 0)
-                _pct_v   = float(_eq_nom.get("share_pct", 100) or 100) if _eq_nom else 100.0
-                _reg_v   = bool(_eq_nom.get("nomination_registered")) if _eq_nom else False
-                _nts_v   = (_eq_nom.get("notes") or "") if _eq_nom else ""
-                fn1, fn2, fn3 = st.columns(3)
-                fn_name  = fn1.selectbox("Nominee Name", _NOMINEES_LOCAL, index=_nom_idx, key=f"eq_nn_{owner}")
-                fn_pct   = fn2.number_input("Share %", 0.0, 100.0, _pct_v, step=1.0, key=f"eq_pct_{owner}")
-                fn_rel   = fn3.selectbox("Relationship", _RELS_LOCAL, index=_rel_idx, key=f"eq_rel_{owner}")
-                fn4, fn5 = st.columns(2)
-                fn_reg   = fn4.checkbox("Nomination Registered", value=_reg_v, key=f"eq_reg_{owner}")
-                fn_notes = fn5.text_input("Notes", value=_nts_v, key=f"eq_notes_{owner}", placeholder="(optional)")
-                if st.form_submit_button("Save Nominee"):
-                    save_nominee("india_eq", owner, owner, f"{owner} Demat Account",
-                                 fn_name, fn_pct, fn_rel, fn_reg, fn_notes.strip())
-                    st.session_state[f"show_eq_nom_{owner}"] = False
-                    st.success("✅ Nominee saved.")
-                    st.rerun()
+                nom_ed = _nom_editor(f"eq_nom_{owner}", _eq_noms)
+                if st.form_submit_button("Save Nominees"):
+                    nom_list  = _parse_nom_df(nom_ed)
+                    total_pct = sum(n["share_pct"] for n in nom_list) if nom_list else 0
+                    if nom_list and abs(total_pct - 100) > 0.5:
+                        st.error(f"Nominee shares must total 100% (currently {total_pct:.0f}%)")
+                    else:
+                        save_nominees("india_eq", owner, owner, f"{owner} Demat Account", nom_list)
+                        st.session_state[f"show_eq_nom_{owner}"] = False
+                        st.success("✅ Nominees saved.")
+                        st.rerun()
 
         sub_h, sub_d, sub_t = st.tabs(["📋 Holdings", "📊 Day View", "📝 Transactions"])
 

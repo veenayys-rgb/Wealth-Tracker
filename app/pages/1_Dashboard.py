@@ -227,8 +227,8 @@ st.divider()
 with st.expander("🔄 Last Data Refresh", expanded=False):
     import datetime as _dt
 
-    _today = _dt.date.today()
     _IST   = _dt.timezone(_dt.timedelta(hours=5, minutes=30))
+    _today = _dt.datetime.now(_IST).date()
 
     def _status(ts_str: str | None) -> str:
         if not ts_str:

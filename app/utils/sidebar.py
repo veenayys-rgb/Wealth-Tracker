@@ -117,10 +117,23 @@ def _market_closed() -> bool:
     return now < open_time or now >= close_time
 
 
+def _trading_date_ist() -> str:
+    """Return the correct trading date for a portfolio snapshot.
+    Before 9 AM IST → use previous trading day (handles midnight/early-morning refreshes
+    where prices in the DB are still from yesterday's close)."""
+    now = datetime.datetime.now(_IST_TZ)
+    d   = now.date()
+    if now.hour < 9:
+        d -= datetime.timedelta(days=1)
+        while d.weekday() >= 5:      # skip back over weekends
+            d -= datetime.timedelta(days=1)
+    return d.isoformat()
+
+
 def record_history_snapshot() -> tuple[dict, dict]:
     """Compute today's portfolio snapshot and upsert to portfolio_history tables.
     Returns (family_row, mom_row)."""
-    today     = datetime.datetime.now(_IST_TZ).date().isoformat()
+    today     = _trading_date_ist()
     eq_prices = {r["symbol"]: float(r["price"]) for r in fetch("equity_india_prices")}
     mf_navs   = {r["isin"]:   float(r["nav"])   for r in fetch("mf_navs")}
 
@@ -560,7 +573,7 @@ def render_sidebar():
                     st.session_state["_wl_errors"] = _wl_errors
 
                     # ── History snapshot — always record on manual refresh ──
-                    _today_str = datetime.datetime.now(_IST_TZ).date().isoformat()
+                    _today_str = _trading_date_ist()
                     try:
                         _frow, _ = record_history_snapshot()
                         from utils.fmt import ind_num

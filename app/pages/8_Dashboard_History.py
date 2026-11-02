@@ -130,7 +130,23 @@ def _grand_total(snap: dict, owners: list) -> float:
 
 
 def _fmt_ts(ts: str) -> str:
-    return utc_to_ist(ts).replace(" IST", "")
+    """Convert UTC timestamp to IST, using the correct trading date.
+    Before 9 AM IST → show the previous trading day (handles delayed GitHub Actions runs)."""
+    try:
+        import datetime as _dt
+        _IST = _dt.timezone(_dt.timedelta(hours=5, minutes=30))
+        dt = _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dt.timezone.utc)
+        ist = dt.astimezone(_IST)
+        d = ist.date()
+        if ist.hour < 9:
+            d -= _dt.timedelta(days=1)
+            while d.weekday() >= 5:
+                d -= _dt.timedelta(days=1)
+        return d.strftime("%d-%b-%Y") + ist.strftime(" %H:%M")
+    except Exception:
+        return utc_to_ist(ts).replace(" IST", "")
 
 
 # ── Record Snapshot button ────────────────────────────────────────────────────

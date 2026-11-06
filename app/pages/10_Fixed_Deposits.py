@@ -221,10 +221,13 @@ for oi, (owner_tab, owner_filter) in enumerate(zip(owner_tabs, OWNER_FILTERS)):
         # ── EDIT ──────────────────────────────────────────────────────────────
         if subset:
             with st.expander("✏️ Edit Fixed Deposit"):
-                opts = [f"{fd.get('bank','—')} — {fd.get('fd_no','—')} ({fd.get('owner','—')})"
-                        for fd in subset]
-                sel  = st.selectbox("Select FD", opts, key=f"edit_fd_sel_{oi}")
-                si   = opts.index(sel)
+                si = st.selectbox(
+                    "Select FD", range(len(subset)),
+                    format_func=lambda i: (
+                        f"{subset[i].get('bank','—')} — {subset[i].get('fd_no','—')} "
+                        f"({subset[i].get('currency','INR')} {float(subset[i].get('amount',0)):,.0f}) "
+                        f"— {subset[i].get('owner','—')}"),
+                    key=f"edit_fd_sel_{oi}")
                 fd   = subset[si]
                 fi   = idxmap[si][0]
                 asset_ref_cur = f"{fd.get('owner','')}|{fd.get('bank','')}|{fd.get('fd_no','')}"

@@ -220,10 +220,12 @@ with tab_india:
             # ── EDIT ──────────────────────────────────────────────────────────
             if subset:
                 with st.expander("✏️ Edit India Account"):
-                    opts = [f"{b['bank_name']} ({b.get('account_type','')}) — {b.get('owner','')}"
-                            for b in subset]
-                    sel  = st.selectbox("Select account", opts, key=f"edit_india_sel_{oi}")
-                    si   = opts.index(sel)
+                    si = st.selectbox(
+                        "Select account", range(len(subset)),
+                        format_func=lambda i: (
+                            f"{subset[i]['bank_name']} ({subset[i].get('account_type','')}) "
+                            f"...{subset[i].get('account_no_last4','—')} — {subset[i].get('owner','')}"),
+                        key=f"edit_india_sel_{oi}")
                     b    = subset[si]
                     fi   = idxmap[si][0]
                     asset_ref_cur = f"{b.get('owner','')}|{b.get('bank_name','')}|{b.get('account_no_last4','')}"
@@ -412,10 +414,12 @@ with tab_uae:
             # ── EDIT ──────────────────────────────────────────────────────────
             if subset:
                 with st.expander("✏️ Edit UAE Account"):
-                    opts = [f"{b['bank_name']} ({b.get('account_type','')}) — {b.get('owner','')}"
-                            for b in subset]
-                    sel  = st.selectbox("Select account", opts, key=f"edit_uae_sel_{oi}")
-                    si   = opts.index(sel)
+                    si = st.selectbox(
+                        "Select account", range(len(subset)),
+                        format_func=lambda i: (
+                            f"{subset[i]['bank_name']} ({subset[i].get('account_type','')}) "
+                            f"{subset[i].get('account_no','—')} — {subset[i].get('owner','')}"),
+                        key=f"edit_uae_sel_{oi}")
                     b    = subset[si]
                     fi   = idxmap[si][0]
                     asset_ref_cur = f"{b.get('owner','')}|{b.get('bank_name','')}|{b.get('account_no','')}"

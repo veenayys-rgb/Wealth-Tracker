@@ -1,0 +1,45 @@
+name: Weekly Supabase Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # 2:00 AM UTC every Sunday (7:30 AM IST)
+  workflow_dispatch:        # allow manual run from GitHub Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: fetcher/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r fetcher/requirements.txt
+
+      - name: Run backup
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python fetcher/backup.py backups
+
+      - name: Prune old backups (keep last 8 weeks)
+        run: |
+          ls -1t backups/*.json 2>/dev/null | tail -n +9 | xargs rm -f || true
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups/
+          git diff --staged --quiet || git commit -m "chore: weekly backup $(date -u '+%Y-%m-%d')"
+          git push

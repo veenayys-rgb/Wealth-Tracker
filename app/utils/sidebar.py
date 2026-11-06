@@ -1,5 +1,5 @@
 """Shared sidebar — Refresh Prices button + page-scoped refresh helpers."""
-import datetime, time, ssl, urllib.request
+import datetime, time, ssl, urllib.request, urllib.error, json
 import streamlit as st
 import yfinance as yf
 from utils.db     import service_upsert, fetch, fetch_one
@@ -601,4 +601,30 @@ def render_sidebar():
             elif typ == "warning": st.warning(msg)
             else: st.info(msg)
         st.markdown("---")
+        if st.button("💾 Backup Now", use_container_width=True, type="secondary"):
+            try:
+                pat = st.secrets["github"]["pat"]
+                url = ("https://api.github.com/repos/veenayys-rgb/Wealth-Tracker"
+                       "/actions/workflows/weekly_backup.yml/dispatches")
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps({"ref": "main"}).encode(),
+                    method="POST",
+                    headers={
+                        "Authorization": f"Bearer {pat}",
+                        "Accept":        "application/vnd.github.v3+json",
+                        "Content-Type":  "application/json",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    if r.status == 204:
+                        st.success("✅ Backup triggered — check GitHub Actions in ~1 min.")
+                    else:
+                        st.warning(f"Unexpected status: {r.status}")
+            except urllib.error.HTTPError as e:
+                st.error(f"GitHub API error {e.code}: {e.read().decode()}")
+            except KeyError:
+                st.error("Add `[github] pat = ...` to Streamlit secrets first.")
+            except Exception as e:
+                st.error(f"Backup trigger failed: {e}")
 

@@ -1,10 +1,42 @@
 """Backup — download a full JSON snapshot of all Supabase config & history tables."""
-import sys, os, json, datetime
+import sys, os, json, datetime, urllib.request, urllib.error
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
 from utils.sidebar import render_sidebar
 from utils.db import fetch
+
+_GH_OWNER    = "veenayys-rgb"
+_GH_REPO     = "Wealth-Tracker"
+_GH_WORKFLOW = "weekly_backup.yml"
+
+
+def _trigger_backup_workflow() -> tuple[bool, str]:
+    """Trigger the weekly_backup workflow via GitHub API. Returns (success, message)."""
+    try:
+        pat = st.secrets["github"]["pat"]
+    except KeyError:
+        return False, "GitHub PAT not configured — add `[github] pat = ...` to Streamlit secrets."
+    url     = f"https://api.github.com/repos/{_GH_OWNER}/{_GH_REPO}/actions/workflows/{_GH_WORKFLOW}/dispatches"
+    payload = json.dumps({"ref": "main"}).encode()
+    req     = urllib.request.Request(
+        url, data=payload, method="POST",
+        headers={
+            "Authorization": f"Bearer {pat}",
+            "Accept":        "application/vnd.github.v3+json",
+            "Content-Type":  "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status == 204:
+                return True, "✅ Backup workflow triggered — check GitHub Actions in ~1 min."
+            return False, f"Unexpected response: {resp.status}"
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        return False, f"GitHub API error {e.code}: {body}"
+    except Exception as e:
+        return False, str(e)
 
 st.set_page_config(page_title="Backup | Wealth Tracker", page_icon="💾", layout="wide")
 st.title("💾 Backup")
@@ -71,6 +103,18 @@ total_rows = sum(r["Row Count"] for r in summary_rows)
 st.caption(f"Total rows across all tables: **{total_rows}**")
 
 # ── Download ──────────────────────────────────────────────────────────────────
+st.divider()
+
+# ── Trigger GitHub Actions backup ─────────────────────────────────────────────
+st.subheader("Run Automated Backup Now")
+st.caption("Triggers the GitHub Actions workflow — backs up to the repo's `backups/` folder without needing to open GitHub.")
+if st.button("🚀 Trigger GitHub Backup", type="secondary"):
+    ok, msg = _trigger_backup_workflow()
+    if ok:
+        st.success(msg)
+    else:
+        st.error(msg)
+
 st.divider()
 st.subheader("Download")
 

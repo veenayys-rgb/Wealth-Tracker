@@ -2,6 +2,7 @@
 .streamlit/secrets.toml
 config/
 *.json
+!backups/*.json
 __pycache__/
 *.pyc
 .DS_Store

@@ -298,90 +298,145 @@ def _chg_cell(curr: float, prev: float | None) -> str:
 
 
 def _build_table() -> str:
-    th_style = ("style='padding:7px 10px;text-align:right;font-size:.8em;"
-                "color:#888;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
-    th_l     = ("style='padding:7px 10px;text-align:left;font-size:.8em;"
-                "color:#888;font-weight:500;border-bottom:1px solid #ddd'")
-    th_prev  = ("style='padding:7px 10px;text-align:right;font-size:.8em;"
-                "color:#6b4fa0;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
-
     show_prev = bool(prev_cv_map)
-    prev_col  = f"<th {th_prev}>Prev day close</th>" if show_prev else ""
-    chg_col   = f"<th {th_style}>Change</th>" if show_prev else ""
+
+    # ── shared per-row computation ──────────────────────────────────────────
+    computed = []
+    for name, inv, cv in asset_rows:
+        gl      = cv - inv
+        ret     = (gl / inv * 100) if inv > 0 else None
+        alloc   = (cv / total_cv * 100) if total_cv > 0 else 0
+        has_gl  = inv > 0 and inv != cv
+        prev_cv = prev_cv_map.get(name) if show_prev else None
+        computed.append((name, inv, cv, gl, ret, alloc, has_gl, prev_cv))
+
+    tot_ret = (gain / total_inv * 100) if total_inv > 0 else None
+
+    # ── DESKTOP TABLE ───────────────────────────────────────────────────────
+    th  = ("style='padding:7px 10px;text-align:right;font-size:.8em;"
+           "color:#888;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
+    th_l = ("style='padding:7px 10px;text-align:left;font-size:.8em;"
+            "color:#888;font-weight:500;border-bottom:1px solid #ddd'")
+    th_p = ("style='padding:7px 10px;text-align:right;font-size:.8em;"
+            "color:#6b4fa0;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
 
     rows_html = ""
-    for i, (name, inv, cv) in enumerate(asset_rows):
-        gl    = cv - inv
-        ret   = (gl / inv * 100) if inv > 0 else None
-        alloc = (cv / total_cv * 100) if total_cv > 0 else 0
-        bg    = "background:#f9f9f9" if i % 2 == 1 else ""
-        td    = f"style='padding:7px 10px;text-align:right;border-bottom:.5px solid #eee;{bg}'"
-        td_l  = f"style='padding:7px 10px;text-align:left;font-weight:500;border-bottom:.5px solid #eee;{bg}'"
-        td_p  = f"style='padding:7px 10px;text-align:right;color:#6b4fa0;border-bottom:.5px solid #eee;{bg}'"
-
-        prev_cv = prev_cv_map.get(name)
-        prev_cell  = (f"<td {td_p}>{ind_num(prev_cv) if prev_cv else '—'}</td>"
-                      ) if show_prev else ""
-        chg_cell   = (f"<td {td}>{_chg_cell(cv, prev_cv)}</td>"
-                      ) if show_prev else ""
-
-        has_gl  = inv > 0 and inv != cv
-        gl_str  = ind_num(gl) if has_gl else "—"
-        ret_str = (f'<span style="color:{"green" if ret >= 0 else "red"}">{ret:.2f}%</span>'
-                   if has_gl and ret is not None else "—")
+    for i, (name, inv, cv, gl, ret, alloc, has_gl, prev_cv) in enumerate(computed):
+        bg   = "background:#f9f9f9" if i % 2 == 1 else ""
+        td   = f"style='padding:7px 10px;text-align:right;border-bottom:.5px solid #eee;{bg}'"
+        td_l = f"style='padding:7px 10px;text-align:left;font-weight:500;border-bottom:.5px solid #eee;{bg}'"
+        td_p = f"style='padding:7px 10px;text-align:right;color:#6b4fa0;border-bottom:.5px solid #eee;{bg}'"
+        gl_s = ind_num(gl) if has_gl else "—"
+        ret_s = (f'<span style="color:{"green" if ret >= 0 else "red"}">{ret:.2f}%</span>'
+                 if has_gl and ret is not None else "—")
         rows_html += (
             f"<tr>"
             f"<td {td_l}>{name}</td>"
             f"<td {td}>{ind_num(inv)}</td>"
-            f"{prev_cell}"
-            f"<td {td}>{ind_num(cv)}</td>"
-            f"{chg_cell}"
-            f"<td {td}>{gl_str}</td>"
-            f"<td {td}>{ret_str}</td>"
+            + (f"<td {td_p}>{ind_num(prev_cv) if prev_cv else '—'}</td>" if show_prev else "")
+            + f"<td {td}>{ind_num(cv)}</td>"
+            + (f"<td {td}>{_chg_cell(cv, prev_cv)}</td>" if show_prev else "")
+            + f"<td {td}>{gl_s}</td>"
+            f"<td {td}>{ret_s}</td>"
             f"<td {td}>{alloc:.2f}%</td>"
             f"</tr>"
         )
 
-    # Total row
-    tot_ret  = (gain / total_inv * 100) if total_inv > 0 else None
-    ret_str  = (f'<span style="color:{"green" if tot_ret >= 0 else "red"}">{tot_ret:.2f}%</span>'
-                if tot_ret is not None else "—")
-    tf       = "style='padding:8px 10px;text-align:right;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
-    tf_l     = "style='padding:8px 10px;text-align:left;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
-    tf_p     = "style='padding:8px 10px;text-align:right;font-weight:600;color:#6b4fa0;border-top:1px solid #ccc;background:#f0f2f6'"
-    tot_prev_cell = (f"<td {tf_p}>{ind_num(prev_total_cv) if prev_total_cv else '—'}</td>"
-                     ) if show_prev else ""
-    tot_chg_cell  = (f"<td {tf}>{_chg_cell(total_cv, prev_total_cv)}</td>"
-                     ) if show_prev else ""
-
+    tf   = "style='padding:8px 10px;text-align:right;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
+    tf_l = "style='padding:8px 10px;text-align:left;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
+    tf_p = "style='padding:8px 10px;text-align:right;font-weight:600;color:#6b4fa0;border-top:1px solid #ccc;background:#f0f2f6'"
+    tot_ret_s = (f'<span style="color:{"green" if tot_ret >= 0 else "red"}">{tot_ret:.2f}%</span>'
+                 if tot_ret is not None else "—")
     rows_html += (
         f"<tr>"
         f"<td {tf_l}>Total</td>"
         f"<td {tf}>{ind_num(total_inv)}</td>"
-        f"{tot_prev_cell}"
-        f"<td {tf}>{ind_num(total_cv)}</td>"
-        f"{tot_chg_cell}"
-        f"<td {tf}>{ind_num(gain)}</td>"
-        f"<td {tf}>{ret_str}</td>"
+        + (f"<td {tf_p}>{ind_num(prev_total_cv) if prev_total_cv else '—'}</td>" if show_prev else "")
+        + f"<td {tf}>{ind_num(total_cv)}</td>"
+        + (f"<td {tf}>{_chg_cell(total_cv, prev_total_cv)}</td>" if show_prev else "")
+        + f"<td {tf}>{ind_num(gain)}</td>"
+        f"<td {tf}>{tot_ret_s}</td>"
         f"<td {tf}>100.00%</td>"
         f"</tr>"
     )
 
-    return (
-        f"<div style='overflow-x:auto'>"
+    desktop = (
+        f"<div class='wt-desk' style='overflow-x:auto'>"
         f"<table style='width:100%;border-collapse:collapse;font-size:.85em'>"
         f"<thead><tr>"
         f"<th {th_l}>Asset class</th>"
-        f"<th {th_style}>Invested</th>"
-        f"{prev_col}"
-        f"<th {th_style}>Current value</th>"
-        f"{chg_col}"
-        f"<th {th_style}>Gain / Loss</th>"
-        f"<th {th_style}>Return %</th>"
-        f"<th {th_style}>Alloc %</th>"
+        f"<th {th}>Invested</th>"
+        + (f"<th {th_p}>Prev day close</th><th {th}>Change</th>" if show_prev else "")
+        + f"<th {th}>Current value</th>"
+        f"<th {th}>Gain / Loss</th>"
+        f"<th {th}>Return %</th>"
+        f"<th {th}>Alloc %</th>"
         f"</tr></thead>"
         f"<tbody>{rows_html}</tbody>"
         f"</table></div>"
+    )
+
+    # ── MOBILE CARDS ────────────────────────────────────────────────────────
+    cards = ""
+    for name, inv, cv, gl, ret, alloc, has_gl, prev_cv in computed:
+        chg_html = ""
+        if show_prev and prev_cv:
+            chg   = cv - prev_cv
+            cpct  = abs(chg / prev_cv * 100) if prev_cv else 0
+            color = "green" if chg >= 0 else "red"
+            chg_html = (f'<div style="font-size:.75em;color:{color};margin-top:2px">'
+                        f'{ind_num(abs(chg), decimals=0)} ({cpct:.2f}%)</div>')
+        prev_html = (f'<div style="font-size:.7em;color:#6b4fa0;margin-top:1px">'
+                     f'prev: {ind_num(prev_cv)}</div>') if (show_prev and prev_cv) else ""
+        ret_alloc = (f'<div style="font-size:.7em;color:#888;margin-top:2px">'
+                     + (f'{ret:.2f}% return · ' if has_gl and ret is not None else "")
+                     + f'{alloc:.2f}% alloc</div>')
+        cards += (
+            f'<div style="display:flex;justify-content:space-between;align-items:flex-start;'
+            f'padding:10px 14px;border-bottom:.5px solid #eee">'
+            f'<div style="font-size:.85em;font-weight:500;padding-top:2px">{name}</div>'
+            f'<div style="text-align:right">'
+            f'<div style="font-size:.95em;font-weight:600">{ind_num(cv)}</div>'
+            f'{prev_html}{chg_html}{ret_alloc}'
+            f'</div></div>'
+        )
+
+    # Total card
+    tot_chg_html = ""
+    if show_prev and prev_total_cv:
+        chg   = total_cv - prev_total_cv
+        cpct  = abs(chg / prev_total_cv * 100) if prev_total_cv else 0
+        color = "green" if chg >= 0 else "red"
+        tot_chg_html = (f'<div style="font-size:.75em;color:{color};margin-top:2px">'
+                        f'{ind_num(abs(chg), decimals=0)} ({cpct:.2f}%)</div>')
+    tot_prev_html = (f'<div style="font-size:.7em;color:#6b4fa0;margin-top:1px">'
+                     f'prev: {ind_num(prev_total_cv)}</div>') if (show_prev and prev_total_cv) else ""
+    tot_ret_meta  = (f'<div style="font-size:.7em;color:#888;margin-top:2px">'
+                     + (f'{tot_ret:.2f}% return' if tot_ret is not None else "") + '</div>')
+    cards += (
+        f'<div style="display:flex;justify-content:space-between;align-items:flex-start;'
+        f'padding:10px 14px;background:#f0f2f6;border-top:1px solid #ccc">'
+        f'<div style="font-size:.9em;font-weight:600;padding-top:2px">Total</div>'
+        f'<div style="text-align:right">'
+        f'<div style="font-size:1em;font-weight:700">{ind_num(total_cv)}</div>'
+        f'{tot_prev_html}{tot_chg_html}{tot_ret_meta}'
+        f'</div></div>'
+    )
+
+    mobile = (
+        f'<div class="wt-mob" style="border:.5px solid #ddd;border-radius:8px;overflow:hidden">'
+        f'{cards}</div>'
+    )
+
+    return (
+        "<style>"
+        ".wt-mob{display:none}"
+        "@media(max-width:768px){"
+        ".wt-desk{display:none!important}"
+        ".wt-mob{display:block!important}"
+        "}"
+        "</style>"
+        + desktop + mobile
     )
 
 

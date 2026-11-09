@@ -2,6 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import datetime as _dt
 import streamlit as st
 from utils.sidebar import render_sidebar, render_index_bar
 import pandas as pd
@@ -165,20 +166,98 @@ intl_inv, intl_cv  = intl_totals()
 bank_cv            = bank_total_inr()
 fd_cv              = fd_total_inr()
 ins_cv             = insurance_surrender_inr()
-day_gl, invest_cv  = day_gl_family()
 
 total_inv = eq_inv + mf_v_inv + mf_h_inv + mf_a_inv + intl_inv
 total_cv  = eq_cv  + mf_v_cv  + mf_h_cv  + mf_a_cv  + intl_cv + bank_cv + fd_cv + ins_cv
 gain      = total_cv - total_inv
 ret_pct   = (gain / total_inv * 100) if total_inv > 0 else 0
-day_pct   = (day_gl / invest_cv * 100) if invest_cv > 0 else 0
+
+# ── Prev-day snapshot (for comparison) ───────────────────────────────────────
+_IST_TZ = _dt.timezone(_dt.timedelta(hours=5, minutes=30))
+
+def _trading_date(ts: str) -> _dt.date:
+    dt = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_dt.timezone.utc)
+    ist = dt.astimezone(_IST_TZ)
+    d = ist.date()
+    if ist.hour < 9:
+        d -= _dt.timedelta(days=1)
+        while d.weekday() >= 5:
+            d -= _dt.timedelta(days=1)
+    return d
+
+@st.cache_data(ttl=300)
+def _load_prev_snap():
+    today = _trading_date(_dt.datetime.now(_dt.timezone.utc).isoformat())
+    snaps = fetch("dashboard_snapshots")
+    earlier = [s for s in snaps if _trading_date(s["recorded_at"]) < today]
+    return max(earlier, key=lambda s: s["recorded_at"]) if earlier else None
+
+_SNAP_OWNERS = ["vinay", "harsh", "anusha"]
+
+def _snap_sum(snap, cats):
+    return sum(float(snap.get(f"{o}_{c}", 0) or 0) for o in _SNAP_OWNERS for c in cats)
+
+prev_snap = _load_prev_snap()
+
+_ASSET_SNAP_CATS = {
+    "India Equity":          ["india_eq"],
+    "Mutual Funds":          ["mf"],
+    "International Equity":  ["intl_eq"],
+    "Bank Accounts":         ["bank_india", "bank_uae"],
+    "Fixed Deposits":        ["fd"],
+    "Insurance":             ["insurance"],
+}
+
+prev_cv_map: dict = {}
+prev_total_cv: float | None = None
+if prev_snap:
+    prev_cv_map  = {name: _snap_sum(prev_snap, cats) for name, cats in _ASSET_SNAP_CATS.items()}
+    prev_total_cv = sum(prev_cv_map.values())
+    prev_total_inv = sum(
+        float(prev_snap.get(f"{o}_{c}", 0) or 0)
+        for o in _SNAP_OWNERS
+        for c in ["india_eq", "mf", "intl_eq"]
+    )
+    prev_gain = prev_total_cv - prev_total_inv
 
 # ── Summary cards ─────────────────────────────────────────────────────────────
-c1, c2, c3, c4 = st.columns(4)
-c1.markdown(metric_card("Total Net Worth",  ind_num(total_cv)),  unsafe_allow_html=True)
-c2.markdown(metric_card("Total Invested",   ind_num(total_inv)), unsafe_allow_html=True)
-c3.markdown(metric_card("Gain / Loss",      ind_num(gain), delta=pct(ret_pct)), unsafe_allow_html=True)
-c4.markdown(metric_card("Today's G/L",      ind_num(day_gl), delta=pct(day_pct)), unsafe_allow_html=True)
+def _tile(label: str, val_str: str, sub: str | None,
+          curr: float, prev: float | None) -> str:
+    sub_h = (f'<div style="font-size:.75em;color:#888;margin-top:1px">{sub}</div>') if sub else ""
+    if prev is not None and prev > 0:
+        chg   = curr - prev
+        color = "green" if chg >= 0 else "red"
+        cpct  = abs(chg / prev * 100)
+        bot = (
+            f'<div style="border-top:1px solid #ddd;margin-top:8px;padding-top:7px;'
+            f'display:flex;gap:16px;flex-wrap:wrap">'
+            f'<div><div style="font-size:.65em;color:#888">prev day close</div>'
+            f'<div style="font-size:.8em;color:#6b4fa0">{ind_num(prev)}</div></div>'
+            f'<div><div style="font-size:.65em;color:#888">change</div>'
+            f'<div style="font-size:.85em;font-weight:600;color:{color}">'
+            f'{ind_num(abs(chg), decimals=0)} ({cpct:.2f}%)</div></div>'
+            f'</div>'
+        )
+    else:
+        bot = ""
+    return (
+        f'<div style="background:#f0f2f6;border-radius:8px;padding:16px 20px">'
+        f'<div style="font-size:.8em;color:#555;margin-bottom:4px">{label}</div>'
+        f'<div style="font-size:1.35em;font-weight:700">{val_str}</div>'
+        f'{sub_h}{bot}</div>'
+    )
+
+c1, c2, c3 = st.columns(3)
+c1.markdown(_tile("Total Net Worth", ind_num(total_cv), None,
+                  total_cv, prev_total_cv), unsafe_allow_html=True)
+c2.markdown(_tile("Total Invested",  ind_num(total_inv), None,
+                  total_inv,
+                  prev_total_inv if prev_snap else None), unsafe_allow_html=True)
+c3.markdown(_tile("Gain / Loss", ind_num(gain), f"{ret_pct:.2f}% overall",
+                  gain,
+                  prev_gain if prev_snap else None), unsafe_allow_html=True)
 
 st.divider()
 
@@ -189,37 +268,112 @@ mf_inv = mf_v_inv + mf_h_inv + mf_a_inv
 mf_cv  = mf_v_cv  + mf_h_cv  + mf_a_cv
 
 asset_rows = [
-    ("India Equity",        eq_inv,   eq_cv),
-    ("Mutual Funds",        mf_inv,   mf_cv),
+    ("India Equity",         eq_inv,   eq_cv),
+    ("Mutual Funds",         mf_inv,   mf_cv),
     ("International Equity", intl_inv, intl_cv),
-    ("Bank Accounts",       0,        bank_cv),
-    ("Fixed Deposits",      0,        fd_cv),
-    ("Insurance",           0,        ins_cv),
+    ("Bank Accounts",        0,        bank_cv),
+    ("Fixed Deposits",       0,        fd_cv),
+    ("Insurance",            0,        ins_cv),
 ]
 
-data = []
-for name, inv, cv in asset_rows:
-    gl    = cv - inv
-    ret   = (gl / inv * 100) if inv > 0 else 0
-    alloc = (cv / total_cv * 100) if total_cv > 0 else 0
-    data.append({
-        "Asset Class":   name,
-        "Invested":      ind_num(inv) if inv > 0 else "—",
-        "Current Value": ind_num(cv),
-        "Gain/Loss":     ind_num(gl) if inv > 0 else "—",
-        "Return %":      f"{ret:+.2f}%" if inv > 0 else "—",
-        "Allocation %":  alloc,
-        "_inv": inv, "_cv": cv, "_gl": gl,
-    })
 
-df = pd.DataFrame(data)
-st.dataframe(
-    df.drop(columns=["_inv","_cv","_gl"]).style.format({"Allocation %": "{:.2f}%"}),
-    use_container_width=True,
-    hide_index=True,
-)
+def _chg_cell(curr: float, prev: float | None) -> str:
+    if prev is None or prev == 0:
+        return "—"
+    chg  = curr - prev
+    cpct = abs(chg / prev * 100)
+    color = "green" if chg >= 0 else "red"
+    return (f'<span style="color:{color}">'
+            f'{ind_num(abs(chg), decimals=0)} ({cpct:.2f}%)</span>')
 
-st.caption("Insurance = Surrender Value  |  Bank/FD/UAE shown as INR equivalent")
+
+def _build_table() -> str:
+    th_style = ("style='padding:7px 10px;text-align:right;font-size:.8em;"
+                "color:#888;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
+    th_l     = ("style='padding:7px 10px;text-align:left;font-size:.8em;"
+                "color:#888;font-weight:500;border-bottom:1px solid #ddd'")
+    th_prev  = ("style='padding:7px 10px;text-align:right;font-size:.8em;"
+                "color:#6b4fa0;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
+
+    show_prev = bool(prev_cv_map)
+    prev_col  = (f"<th {th_prev}>Prev day close</th>"
+                 f"<th {th_style}>Change</th>") if show_prev else ""
+
+    rows_html = ""
+    for i, (name, inv, cv) in enumerate(asset_rows):
+        gl    = cv - inv
+        ret   = (gl / inv * 100) if inv > 0 else None
+        alloc = (cv / total_cv * 100) if total_cv > 0 else 0
+        bg    = "background:#f9f9f9" if i % 2 == 1 else ""
+        td    = f"style='padding:7px 10px;text-align:right;border-bottom:.5px solid #eee;{bg}'"
+        td_l  = f"style='padding:7px 10px;text-align:left;font-weight:500;border-bottom:.5px solid #eee;{bg}'"
+        td_p  = f"style='padding:7px 10px;text-align:right;color:#6b4fa0;border-bottom:.5px solid #eee;{bg}'"
+
+        prev_cv = prev_cv_map.get(name)
+        prev_cells = (
+            f"<td {td_p}>{ind_num(prev_cv) if prev_cv else '—'}</td>"
+            f"<td {td}>{_chg_cell(cv, prev_cv)}</td>"
+        ) if show_prev else ""
+
+        gl_str  = ind_num(gl) if inv > 0 else "—"
+        ret_str = (f'<span style="color:{"green" if ret >= 0 else "red"}">{ret:.2f}%</span>'
+                   if ret is not None else "—")
+        rows_html += (
+            f"<tr>"
+            f"<td {td_l}>{name}</td>"
+            f"<td {td}>{ind_num(inv) if inv > 0 else '—'}</td>"
+            f"{prev_cells}"
+            f"<td {td}>{ind_num(cv)}</td>"
+            f"<td {td}>{gl_str}</td>"
+            f"<td {td}>{ret_str}</td>"
+            f"<td {td}>{alloc:.2f}%</td>"
+            f"</tr>"
+        )
+
+    # Total row
+    tot_ret  = (gain / total_inv * 100) if total_inv > 0 else None
+    ret_str  = (f'<span style="color:{"green" if tot_ret >= 0 else "red"}">{tot_ret:.2f}%</span>'
+                if tot_ret is not None else "—")
+    tf       = "style='padding:8px 10px;text-align:right;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
+    tf_l     = "style='padding:8px 10px;text-align:left;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
+    tf_p     = "style='padding:8px 10px;text-align:right;font-weight:600;color:#6b4fa0;border-top:1px solid #ccc;background:#f0f2f6'"
+    tot_prev_cells = (
+        f"<td {tf_p}>{ind_num(prev_total_cv) if prev_total_cv else '—'}</td>"
+        f"<td {tf}>{_chg_cell(total_cv, prev_total_cv)}</td>"
+    ) if show_prev else ""
+
+    rows_html += (
+        f"<tr>"
+        f"<td {tf_l}>Total</td>"
+        f"<td {tf}>{ind_num(total_inv)}</td>"
+        f"{tot_prev_cells}"
+        f"<td {tf}>{ind_num(total_cv)}</td>"
+        f"<td {tf}>{ind_num(gain)}</td>"
+        f"<td {tf}>{ret_str}</td>"
+        f"<td {tf}>100.00%</td>"
+        f"</tr>"
+    )
+
+    return (
+        f"<div style='overflow-x:auto'>"
+        f"<table style='width:100%;border-collapse:collapse;font-size:.85em'>"
+        f"<thead><tr>"
+        f"<th {th_l}>Asset class</th>"
+        f"<th {th_style}>Invested</th>"
+        f"{prev_col}"
+        f"<th {th_style}>Current value</th>"
+        f"<th {th_style}>Gain / Loss</th>"
+        f"<th {th_style}>Return %</th>"
+        f"<th {th_style}>Alloc %</th>"
+        f"</tr></thead>"
+        f"<tbody>{rows_html}</tbody>"
+        f"</table></div>"
+    )
+
+
+st.markdown(_build_table(), unsafe_allow_html=True)
+st.caption("Insurance = Surrender Value  |  Bank/FD/UAE shown as INR equivalent  |  "
+           "Prev day close = latest snapshot before today's market open")
 
 st.divider()
 

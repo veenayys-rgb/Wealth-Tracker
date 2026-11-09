@@ -70,17 +70,17 @@ try:
 except Exception:
     india_txns = []
 
-render_index_bar()
-
-# ── Refresh button ──────────────────────────────────────────────────────────
-_rc, _cc = st.columns([1, 4])
+# ── Index bar + Refresh button on one row ───────────────────────────────────
+_rc, _ic = st.columns([1, 4])
 with _rc:
     if st.button("🔄 Refresh Prices", key="refresh_india_eq", use_container_width=True):
         with st.spinner("Fetching India equity prices…"):
             _saved, _total = refresh_india_equity_prices()
         st.success(f"✅ {_saved}/{_total} prices updated")
         st.rerun()
-_cc.caption(f"Last fetched: {last_fetch}  |  Prev Close: {prev_label}")
+    st.caption(f"Last fetched: {last_fetch}  |  Prev Close: {prev_label}")
+with _ic:
+    render_index_bar()
 
 HOLDING_TYPES = ["NRE", "NRO", "Resident"]
 

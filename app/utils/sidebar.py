@@ -89,7 +89,7 @@ def render_index_bar():
 <style>
 .idx-bar{{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);
 border-radius:8px;padding:0.65rem 1.25rem;display:flex;align-items:center;gap:2rem;
-flex-wrap:wrap;margin-bottom:0.75rem;}}
+flex-wrap:wrap;margin-bottom:0.25rem;}}
 .idx-block{{display:flex;align-items:baseline;gap:0.6rem;}}
 .idx-lbl{{font-size:13px;font-weight:500;color:var(--color-text-secondary);}}
 .idx-lvl{{font-size:20px;font-weight:500;color:var(--color-text-primary);}}

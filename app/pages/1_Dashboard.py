@@ -177,8 +177,12 @@ fd_cv              = fd_total_inr()
 ins_cv             = insurance_surrender_inr()
 ins_inv            = insurance_invested_inr()
 
-total_inv = eq_inv + mf_v_inv + mf_h_inv + mf_a_inv + intl_inv + ins_inv
-total_cv  = eq_cv  + mf_v_cv  + mf_h_cv  + mf_a_cv  + intl_cv + bank_cv + fd_cv + ins_cv
+mf_inv    = mf_v_inv + mf_h_inv + mf_a_inv
+mf_cv     = mf_v_cv  + mf_h_cv  + mf_a_cv
+
+# total_inv includes bank+fd at face value so the Invested column sums correctly
+total_inv = eq_inv + mf_inv + intl_inv + bank_cv + fd_cv + ins_inv
+total_cv  = eq_cv  + mf_cv  + intl_cv  + bank_cv + fd_cv + ins_cv
 gain      = total_cv - total_inv
 ret_pct   = (gain / total_inv * 100) if total_inv > 0 else 0
 
@@ -273,9 +277,6 @@ st.divider()
 
 # ── Asset breakdown table ─────────────────────────────────────────────────────
 st.subheader("Net Worth Breakdown")
-
-mf_inv = mf_v_inv + mf_h_inv + mf_a_inv
-mf_cv  = mf_v_cv  + mf_h_cv  + mf_a_cv
 
 asset_rows = [
     ("India Equity",         eq_inv,   eq_cv),

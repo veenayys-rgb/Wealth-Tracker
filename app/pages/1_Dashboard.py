@@ -367,9 +367,10 @@ def _build_table() -> str:
         f"<thead><tr>"
         f"<th {th_l}>Asset class</th>"
         f"<th {th}>Invested</th>"
-        + (f"<th {th_p}>Prev day close</th><th {th}>Change</th>" if show_prev else "")
+        + (f"<th {th_p}>Prev day close</th>" if show_prev else "")
         + f"<th {th}>Current value</th>"
-        f"<th {th}>Gain / Loss</th>"
+        + (f"<th {th}>Change</th>" if show_prev else "")
+        + f"<th {th}>Total Gain/Loss</th>"
         f"<th {th}>Return %</th>"
         f"<th {th}>Alloc %</th>"
         f"</tr></thead>"
@@ -385,19 +386,19 @@ def _build_table() -> str:
             chg   = cv - prev_cv
             cpct  = abs(chg / prev_cv * 100) if prev_cv else 0
             color = "green" if chg >= 0 else "red"
-            chg_html = (f'<div style="font-size:.75em;color:{color};margin-top:2px">'
+            chg_html = (f'<div style="font-size:.82em;color:{color};margin-top:2px">'
                         f'{ind_num(abs(chg), decimals=0)} ({cpct:.2f}%)</div>')
-        prev_html = (f'<div style="font-size:.7em;color:#6b4fa0;margin-top:1px">'
+        prev_html = (f'<div style="font-size:.78em;color:#6b4fa0;margin-top:1px">'
                      f'prev: {ind_num(prev_cv)}</div>') if (show_prev and prev_cv) else ""
-        ret_alloc = (f'<div style="font-size:.7em;color:#888;margin-top:2px">'
+        ret_alloc = (f'<div style="font-size:.78em;color:#888;margin-top:2px">'
                      + (f'{ret:.2f}% return · ' if has_gl and ret is not None else "")
                      + f'{alloc:.2f}% alloc</div>')
         cards += (
             f'<div style="display:flex;justify-content:space-between;align-items:flex-start;'
             f'padding:10px 14px;border-bottom:.5px solid #eee">'
-            f'<div style="font-size:.85em;font-weight:500;padding-top:2px">{name}</div>'
+            f'<div style="font-size:.95em;font-weight:500;padding-top:2px">{name}</div>'
             f'<div style="text-align:right">'
-            f'<div style="font-size:.95em;font-weight:600">{ind_num(cv)}</div>'
+            f'<div style="font-size:1.05em;font-weight:600">{ind_num(cv)}</div>'
             f'{prev_html}{chg_html}{ret_alloc}'
             f'</div></div>'
         )

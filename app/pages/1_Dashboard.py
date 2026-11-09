@@ -108,6 +108,15 @@ def insurance_surrender_inr() -> float:
     return round(total, 2)
 
 
+def insurance_invested_inr() -> float:
+    total = 0.0
+    for p in load("insurance.json"):
+        paid = float(p.get("premium_paid_ytd", 0))
+        curr = p.get("currency", "INR")
+        total += paid * _fx(curr)
+    return round(total, 2)
+
+
 def day_gl_family() -> tuple[float, float]:
     """Today's G/L for Family (Vinay+Harsh+Anusha) across equity+intl+MF.
     Returns (day_gl, invest_cv) where invest_cv is eq+intl+MF current value."""
@@ -166,8 +175,9 @@ intl_inv, intl_cv  = intl_totals()
 bank_cv            = bank_total_inr()
 fd_cv              = fd_total_inr()
 ins_cv             = insurance_surrender_inr()
+ins_inv            = insurance_invested_inr()
 
-total_inv = eq_inv + mf_v_inv + mf_h_inv + mf_a_inv + intl_inv
+total_inv = eq_inv + mf_v_inv + mf_h_inv + mf_a_inv + intl_inv + ins_inv
 total_cv  = eq_cv  + mf_v_cv  + mf_h_cv  + mf_a_cv  + intl_cv + bank_cv + fd_cv + ins_cv
 gain      = total_cv - total_inv
 ret_pct   = (gain / total_inv * 100) if total_inv > 0 else 0
@@ -271,9 +281,9 @@ asset_rows = [
     ("India Equity",         eq_inv,   eq_cv),
     ("Mutual Funds",         mf_inv,   mf_cv),
     ("International Equity", intl_inv, intl_cv),
-    ("Bank Accounts",        0,        bank_cv),
-    ("Fixed Deposits",       0,        fd_cv),
-    ("Insurance",            0,        ins_cv),
+    ("Bank Accounts",        bank_cv,  bank_cv),
+    ("Fixed Deposits",       fd_cv,    fd_cv),
+    ("Insurance",            ins_inv,  ins_cv),
 ]
 
 
@@ -296,8 +306,8 @@ def _build_table() -> str:
                 "color:#6b4fa0;font-weight:500;border-bottom:1px solid #ddd;white-space:nowrap'")
 
     show_prev = bool(prev_cv_map)
-    prev_col  = (f"<th {th_prev}>Prev day close</th>"
-                 f"<th {th_style}>Change</th>") if show_prev else ""
+    prev_col  = f"<th {th_prev}>Prev day close</th>" if show_prev else ""
+    chg_col   = f"<th {th_style}>Change</th>" if show_prev else ""
 
     rows_html = ""
     for i, (name, inv, cv) in enumerate(asset_rows):
@@ -310,20 +320,22 @@ def _build_table() -> str:
         td_p  = f"style='padding:7px 10px;text-align:right;color:#6b4fa0;border-bottom:.5px solid #eee;{bg}'"
 
         prev_cv = prev_cv_map.get(name)
-        prev_cells = (
-            f"<td {td_p}>{ind_num(prev_cv) if prev_cv else '—'}</td>"
-            f"<td {td}>{_chg_cell(cv, prev_cv)}</td>"
-        ) if show_prev else ""
+        prev_cell  = (f"<td {td_p}>{ind_num(prev_cv) if prev_cv else '—'}</td>"
+                      ) if show_prev else ""
+        chg_cell   = (f"<td {td}>{_chg_cell(cv, prev_cv)}</td>"
+                      ) if show_prev else ""
 
-        gl_str  = ind_num(gl) if inv > 0 else "—"
+        has_gl  = inv > 0 and inv != cv
+        gl_str  = ind_num(gl) if has_gl else "—"
         ret_str = (f'<span style="color:{"green" if ret >= 0 else "red"}">{ret:.2f}%</span>'
-                   if ret is not None else "—")
+                   if has_gl and ret is not None else "—")
         rows_html += (
             f"<tr>"
             f"<td {td_l}>{name}</td>"
-            f"<td {td}>{ind_num(inv) if inv > 0 else '—'}</td>"
-            f"{prev_cells}"
+            f"<td {td}>{ind_num(inv)}</td>"
+            f"{prev_cell}"
             f"<td {td}>{ind_num(cv)}</td>"
+            f"{chg_cell}"
             f"<td {td}>{gl_str}</td>"
             f"<td {td}>{ret_str}</td>"
             f"<td {td}>{alloc:.2f}%</td>"
@@ -337,17 +349,18 @@ def _build_table() -> str:
     tf       = "style='padding:8px 10px;text-align:right;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
     tf_l     = "style='padding:8px 10px;text-align:left;font-weight:600;border-top:1px solid #ccc;background:#f0f2f6'"
     tf_p     = "style='padding:8px 10px;text-align:right;font-weight:600;color:#6b4fa0;border-top:1px solid #ccc;background:#f0f2f6'"
-    tot_prev_cells = (
-        f"<td {tf_p}>{ind_num(prev_total_cv) if prev_total_cv else '—'}</td>"
-        f"<td {tf}>{_chg_cell(total_cv, prev_total_cv)}</td>"
-    ) if show_prev else ""
+    tot_prev_cell = (f"<td {tf_p}>{ind_num(prev_total_cv) if prev_total_cv else '—'}</td>"
+                     ) if show_prev else ""
+    tot_chg_cell  = (f"<td {tf}>{_chg_cell(total_cv, prev_total_cv)}</td>"
+                     ) if show_prev else ""
 
     rows_html += (
         f"<tr>"
         f"<td {tf_l}>Total</td>"
         f"<td {tf}>{ind_num(total_inv)}</td>"
-        f"{tot_prev_cells}"
+        f"{tot_prev_cell}"
         f"<td {tf}>{ind_num(total_cv)}</td>"
+        f"{tot_chg_cell}"
         f"<td {tf}>{ind_num(gain)}</td>"
         f"<td {tf}>{ret_str}</td>"
         f"<td {tf}>100.00%</td>"
@@ -362,6 +375,7 @@ def _build_table() -> str:
         f"<th {th_style}>Invested</th>"
         f"{prev_col}"
         f"<th {th_style}>Current value</th>"
+        f"{chg_col}"
         f"<th {th_style}>Gain / Loss</th>"
         f"<th {th_style}>Return %</th>"
         f"<th {th_style}>Alloc %</th>"

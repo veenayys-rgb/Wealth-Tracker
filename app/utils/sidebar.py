@@ -433,7 +433,12 @@ _MOBILE_CSS = """
     [data-testid="metric-container"] {
         font-size: 0.85em !important;
     }
+    /* Dashboard breakdown table: show card view, hide full table */
+    .wt-desk { display: none !important; }
+    .wt-mob  { display: block !important; }
 }
+/* Dashboard breakdown table: hide card view on desktop */
+.wt-mob { display: none; }
 </style>
 """
 

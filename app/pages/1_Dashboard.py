@@ -429,16 +429,7 @@ def _build_table() -> str:
         f'{cards}</div>'
     )
 
-    return (
-        "<style>"
-        ".wt-mob{display:none}"
-        "@media(max-width:768px){"
-        ".wt-desk{display:none!important}"
-        ".wt-mob{display:block!important}"
-        "}"
-        "</style>"
-        + desktop + mobile
-    )
+    return desktop + mobile
 
 
 st.markdown(_build_table(), unsafe_allow_html=True)

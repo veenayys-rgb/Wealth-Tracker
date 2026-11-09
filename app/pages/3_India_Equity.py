@@ -168,13 +168,26 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
     with tab:
         holdings  = load(fname)
 
-        # ── Demat Accounts ────────────────────────────────────────────────────
+        # ── Demat info + Nominee side by side ────────────────────────────────
         demat_accts = fetch_demat_accounts(owner)
-        if demat_accts:
-            parts = [f"{a['account_type']}: {a['account_no']}" for a in demat_accts]
-            st.info(f"🏦 Demat: {' | '.join(parts)}")
-        else:
-            st.info("🏦 Demat account numbers not recorded.")
+        _dc, _nc = st.columns(2)
+        with _dc:
+            if demat_accts:
+                parts = [f"{a['account_type']}: {a['account_no']}" for a in demat_accts]
+                st.info(f"🏦 Demat: {' | '.join(parts)}")
+            else:
+                st.info("🏦 Demat account numbers not recorded.")
+        _eq_noms = eq_nom_map.get(owner, [])
+        with _nc:
+            _nc1, _nc2 = st.columns([4, 1])
+            if _eq_noms:
+                _nom_parts = [f"**{n['nominee_name']}** {n.get('share_pct',100):.0f}% ({n.get('relationship','')}) {'✓' if n.get('nomination_registered') else '○'}"
+                              for n in _eq_noms]
+                _nc1.success("🎯 Nominee(s): " + "  |  ".join(_nom_parts))
+            else:
+                _nc1.warning("⚠️  No nominee set for this demat account.")
+
+        # ── Manage Demat Accounts (collapsed) ────────────────────────────────
         with st.expander("🏦 Manage Demat Accounts", expanded=False):
             if demat_accts:
                 for a in demat_accts:
@@ -198,16 +211,7 @@ for tab, (owner, fname) in zip(owner_tabs, OWNERS):
                         st.success("✅ Added.")
                         st.rerun()
 
-        # ── Demat Nominee ─────────────────────────────────────────────────────
-        _eq_noms = eq_nom_map.get(owner, [])
-        if _eq_noms:
-            _nom_parts = [f"**{n['nominee_name']}** {n.get('share_pct',100):.0f}% ({n.get('relationship','')}) {'✓' if n.get('nomination_registered') else '○'}"
-                          for n in _eq_noms]
-            _nc1, _nc2 = st.columns([4, 1])
-            _nc1.success("🎯 Nominee(s): " + "  |  ".join(_nom_parts))
-        else:
-            _nc1, _nc2 = st.columns([4, 1])
-            _nc1.warning("⚠️  No nominee set for this demat account.")
+        # ── Demat Nominee button / form ───────────────────────────────────────
         if _nc2.button("✏️ Set Nominee", key=f"set_eq_nom_{owner}"):
             st.session_state[f"show_eq_nom_{owner}"] = True
         if st.session_state.get(f"show_eq_nom_{owner}"):

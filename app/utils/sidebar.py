@@ -436,6 +436,9 @@ _MOBILE_CSS = """
     /* Dashboard breakdown table: show card view, hide full table */
     .wt-desk { display: none !important; }
     .wt-mob  { display: block !important; }
+    /* Dashboard summary tiles: larger text on mobile */
+    .wt-tile-label { font-size: 1em !important; }
+    .wt-tile-val   { font-size: 1.65em !important; }
 }
 /* Dashboard breakdown table: hide card view on desktop */
 .wt-mob { display: none; }

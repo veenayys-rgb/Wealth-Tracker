@@ -257,9 +257,9 @@ def _tile(label: str, val_str: str, sub: str | None,
     else:
         bot = ""
     return (
-        f'<div style="background:#f0f2f6;border-radius:8px;padding:16px 20px">'
-        f'<div style="font-size:.8em;color:#555;margin-bottom:4px">{label}</div>'
-        f'<div style="font-size:1.35em;font-weight:700">{val_str}</div>'
+        f'<div class="wt-tile" style="background:#f0f2f6;border-radius:8px;padding:16px 20px">'
+        f'<div class="wt-tile-label" style="font-size:.8em;color:#555;margin-bottom:4px">{label}</div>'
+        f'<div class="wt-tile-val" style="font-size:1.35em;font-weight:700">{val_str}</div>'
         f'{sub_h}{bot}</div>'
     )
 
